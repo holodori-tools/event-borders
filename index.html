@@ -1,0 +1,1892 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>イベントボーダー推移・着地予測モニター</title>
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --surface: #ffffff;
+      --border: #dcdfe4;
+      --border-strong: #b8bec8;
+      --text: #171a1f;
+      --text-muted: #5c6470;
+      --accent: #1d4ed8;
+      --forecast: #c2410c;
+      --forecast-soft: #fff7ed;
+      --ok: #15803d;
+      --ok-soft: #f0fdf4;
+      --warn: #a16207;
+      --warn-soft: #fefce8;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Hiragino Kaku Gothic ProN", "Yu Gothic", "Noto Sans JP", sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      font-size: 14px;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .num {
+      font-family: var(--font-mono);
+      font-variant-numeric: tabular-nums;
+    }
+
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 24px;
+    }
+
+    .header-inner {
+      max-width: 1280px;
+      margin: 0 auto;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .title-group h1 {
+      margin: 0;
+      font-size: 17px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+    }
+
+    .title-sub {
+      margin-top: 2px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+
+    select, button, .file-btn {
+      height: 32px;
+      padding: 0 10px;
+      font-size: 13px;
+      font-family: var(--font-sans);
+      color: var(--text);
+      background: var(--surface);
+      border: 1px solid var(--border-strong);
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    select:hover, button:hover, .file-btn:hover {
+      background: #f1f3f6;
+    }
+
+    button.primary {
+      background: var(--text);
+      color: #ffffff;
+      border-color: var(--text);
+      font-weight: 600;
+    }
+
+    button.primary:hover {
+      background: #2d333d;
+    }
+
+    button.accent-btn {
+      background: var(--accent);
+      color: #ffffff;
+      border-color: var(--accent);
+      font-weight: 600;
+    }
+
+    button.accent-btn:hover {
+      background: #1e40af;
+    }
+
+    .file-btn {
+      display: inline-flex;
+      align-items: center;
+    }
+
+    input[type="file"] {
+      display: none;
+    }
+
+    .status-bar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 8px 24px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .status-inner {
+      max-width: 1280px;
+      margin: 0 auto;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 2px 8px;
+      border-radius: 3px;
+      font-weight: 600;
+      font-size: 11px;
+      border: 1px solid transparent;
+    }
+
+    .badge.live {
+      background: var(--ok-soft);
+      color: var(--ok);
+      border-color: #bbf7d0;
+    }
+
+    .badge.paused {
+      background: var(--warn-soft);
+      color: var(--warn);
+      border-color: #fef08a;
+    }
+
+    .badge.error {
+      background: #fef2f2;
+      color: #b91c1c;
+      border-color: #fecaca;
+    }
+
+    .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    main {
+      max-width: 1280px;
+      margin: 18px auto 40px;
+      padding: 0 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+    }
+
+    .kpi-cell {
+      padding: 14px 16px;
+      border-right: 1px solid var(--border);
+    }
+
+    .kpi-cell:last-child {
+      border-right: none;
+    }
+
+    .kpi-label {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+
+    .kpi-value {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: var(--text);
+    }
+
+    .kpi-value.forecast {
+      color: var(--forecast);
+    }
+
+    .kpi-sub {
+      margin-top: 4px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+    }
+
+    .panel-header {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .panel-title {
+      font-size: 14px;
+      font-weight: 700;
+      margin: 0;
+    }
+
+    .legend-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 14px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .legend-item.off {
+      opacity: 0.4;
+      text-decoration: line-through;
+    }
+
+    .swatch {
+      width: 16px;
+      height: 2px;
+      display: inline-block;
+    }
+
+    .swatch.dashed {
+      border-top: 2px dashed var(--forecast);
+      height: 0;
+    }
+
+    .swatch.dotted {
+      border-top: 2px dotted #9ca3af;
+      height: 0;
+    }
+
+    .chart-wrap {
+      position: relative;
+      padding: 16px 16px 10px;
+    }
+
+    svg#trendChart {
+      width: 100%;
+      height: 360px;
+      display: block;
+      overflow: visible;
+    }
+
+    .tooltip {
+      position: absolute;
+      pointer-events: none;
+      background: rgba(23, 26, 31, 0.96);
+      color: #ffffff;
+      padding: 8px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+      line-height: 1.45;
+      display: none;
+      z-index: 10;
+      min-width: 210px;
+    }
+
+    /* Share Card Generator Section */
+    .card-gen-body {
+      padding: 16px;
+      display: grid;
+      grid-template-columns: 1.35fr 1fr;
+      gap: 20px;
+      align-items: start;
+    }
+
+    .canvas-frame {
+      background: #111318;
+      border: 1px solid var(--border-strong);
+      border-radius: 6px;
+      padding: 10px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    canvas#shareCanvas {
+      width: 100%;
+      max-width: 720px;
+      height: auto;
+      display: block;
+      border-radius: 4px;
+    }
+
+    .card-gen-controls {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .tier-badge-preview {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 10px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: #fafbfc;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .tier-dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 3px;
+      border: 1px solid rgba(0,0,0,0.2);
+    }
+
+    .action-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .copy-feedback {
+      font-size: 12px;
+      color: var(--ok);
+      font-weight: 600;
+      min-height: 18px;
+    }
+
+    .two-col {
+      display: grid;
+      grid-template-columns: 1fr 1.35fr;
+      gap: 16px;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    th, td {
+      padding: 9px 12px;
+      border-bottom: 1px solid var(--border);
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    th:first-child, td:first-child,
+    th:nth-child(2), td:nth-child(2) {
+      text-align: left;
+    }
+
+    th {
+      background: #fafbfc;
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 12px;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    tr.highlight td {
+      background: var(--forecast-soft);
+      font-weight: 700;
+    }
+
+    .note-box {
+      padding: 10px 16px;
+      font-size: 12px;
+      color: var(--text-muted);
+      background: #fafbfc;
+      border-top: 1px solid var(--border);
+    }
+
+    @media (max-width: 960px) {
+      .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+      .kpi-cell:nth-child(2) { border-right: none; }
+      .kpi-cell:nth-child(1), .kpi-cell:nth-child(2) { border-bottom: 1px solid var(--border); }
+      .two-col, .card-gen-body { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <div class="title-group">
+        <h1>イベントボーダー推移・着地予測モニター</h1>
+        <div class="title-sub" id="eventSubtitle">データを読み込んでいます...</div>
+      </div>
+      <div class="controls">
+        <select id="eventSelect" title="対象イベント・チャプター選択"></select>
+        <select id="rankSelect" title="順位ボーダー選択">
+          <option value="100">100位</option>
+          <option value="500">500位</option>
+          <option value="1000">1,000位</option>
+          <option value="5000" selected>5,000位</option>
+          <option value="10000">10,000位</option>
+          <option value="50000">50,000位</option>
+          <option value="100000">100,000位</option>
+          <option value="200000">200,000位</option>
+        </select>
+        <button class="primary" id="refreshBtn">今すぐ更新</button>
+        <label class="file-btn" title="ローカルJSONファイル一括読込">
+          JSON読込
+          <input type="file" id="localFileInput" accept=".json" multiple />
+        </label>
+      </div>
+    </div>
+  </header>
+
+  <div class="status-bar">
+    <div class="status-inner">
+      <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+        <span class="badge paused" id="pollingBadge"><span class="dot"></span><span id="pollingText">初期化中</span></span>
+        <span id="sourceModeText" class="num">データソース: 検出中</span>
+      </div>
+      <div class="num" id="timerText">次回自動更新: --:--</div>
+    </div>
+  </div>
+
+  <main>
+    <!-- KPI Strip -->
+    <section class="kpi-grid">
+      <div class="kpi-cell">
+        <div class="kpi-label">現在ボーダー（最新取得値）</div>
+        <div class="kpi-value num" id="kpiCurrent">-</div>
+        <div class="kpi-sub num" id="kpiCurrentSub">経過: - / 進捗: -</div>
+      </div>
+      <div class="kpi-cell">
+        <div class="kpi-label">最終着地予測（本命・加重ドリフト補正）</div>
+        <div class="kpi-value forecast num" id="kpiForecast">-</div>
+        <div class="kpi-sub num" id="kpiForecastSub">単純比例比: -</div>
+      </div>
+      <div class="kpi-cell">
+        <div class="kpi-label">予測レンジ（±誤差幅 / 過去同種幅）</div>
+        <div class="kpi-value num" id="kpiRange">-</div>
+        <div class="kpi-sub num" id="kpiRangeSub">下限〜上限目安</div>
+      </div>
+      <div class="kpi-cell">
+        <div class="kpi-label">直近時速 / 残り時間予測増分</div>
+        <div class="kpi-value num" id="kpiPace">-</div>
+        <div class="kpi-sub num" id="kpiPaceSub">残り増加見込: -</div>
+      </div>
+    </section>
+
+    <!-- Chart Panel -->
+    <section class="panel">
+      <div class="panel-header">
+        <h2 class="panel-title">経過時間別 ボーダー推移・予測曲線（進捗率正規化比較）</h2>
+        <div class="legend-bar" id="legendBar"></div>
+      </div>
+      <div class="chart-wrap" id="chartWrap">
+        <svg id="trendChart" viewBox="0 0 1000 360" preserveAspectRatio="none"></svg>
+        <div class="tooltip" id="chartTooltip"></div>
+      </div>
+      <div class="note-box">
+        ※ 完了済み同種イベントのみを比較対象とし、「現在水準比の上昇トレンド（ドリフト外挿）」と「直近区間時速比」を合成し、さらに開催曜日・終了時刻・イベントシリーズ一致度で重み付けして終盤スパートを予測しています。
+      </div>
+    </section>
+
+    <!-- Image Card Generator Panel -->
+    <section class="panel">
+      <div class="panel-header">
+        <h2 class="panel-title">予測レポート画像生成（順位ティア別テーマ自動適用・DL / コピー）</h2>
+        <div class="tier-badge-preview" id="tierThemeBadge">
+          <span class="tier-dot" id="tierThemeDot"></span>
+          <span id="tierThemeLabel">テーマ: -</span>
+        </div>
+      </div>
+      <div class="card-gen-body">
+        <div class="canvas-frame">
+          <canvas id="shareCanvas" width="1200" height="675"></canvas>
+        </div>
+        <div class="card-gen-controls">
+          <div style="font-weight:700;font-size:13px;">画像出力・カスタマイズ</div>
+          <div style="font-size:12px;color:var(--text-muted);">
+            選択中のボーダー順位に応じてテーマ配色と発光エフェクトが自動適用されます：<br />
+            ・<strong>〜1,000位</strong>：虹色（レインボープリズム）<br />
+            ・<strong>〜5,000位</strong>：紫（輝くロイヤルパープル発光）<br />
+            ・<strong>〜10,000位</strong>：プラチナ（白銀アイス光沢）<br />
+            ・<strong>〜50,000位</strong>：ゴールド（黄金シャンパン光沢）<br />
+            ・<strong>〜100,000位</strong>：シルバー（メタリックシルバー）<br />
+            ・<strong>それ以下</strong>：ブロンズ（カッパーブロンズ）
+          </div>
+          <div style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+            <label style="font-size:12px; color:var(--text-muted);">テーマ手動上書き:</label>
+            <select id="themeOverrideSelect">
+              <option value="auto" selected>順位連動（自動）</option>
+              <option value="rainbow">虹色（〜T1000）</option>
+              <option value="purple">紫・輝く（T5000）</option>
+              <option value="platinum">プラチナ（T10000）</option>
+              <option value="gold">ゴールド（T50000）</option>
+              <option value="silver">シルバー（T100000）</option>
+              <option value="bronze">ブロンズ（それ以下）</option>
+            </select>
+          </div>
+          <div class="action-row">
+            <button class="accent-btn" id="downloadImgBtn">画像をダウンロード (PNG)</button>
+            <button class="primary" id="copyImgBtn">画像をクリップボードにコピー</button>
+          </div>
+          <div class="copy-feedback" id="copyFeedback"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tables -->
+    <section class="two-col">
+      <div class="panel">
+        <div class="panel-header">
+          <h2 class="panel-title">時間帯別 推移シミュレーション</h2>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>日時 (JST)</th>
+                <th>残り時間</th>
+                <th>予測ボーダー</th>
+                <th>予測レンジ</th>
+                <th>区間時速</th>
+              </tr>
+            </thead>
+            <tbody id="milestoneBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <h2 class="panel-title">過去完了イベント 比較重み・終盤伸び率内訳</h2>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>イベント / チャプター</th>
+                <th>開催曜日</th>
+                <th>同進捗時点</th>
+                <th>最終確定値</th>
+                <th>重み</th>
+                <th>換算着地値</th>
+              </tr>
+            </thead>
+            <tbody id="historyBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const STATIC_DATA_BASE = "./data";
+    const DIRECT_API_BASE = "https://api.holodori.best/api/events";
+    const REFRESH_INTERVAL_MS = 10 * 60 * 1000; // 10分おき
+    const HIST_COLORS = ["#64748b", "#0d9488", "#7c3aed", "#db2777", "#4f46e5", "#059669"];
+    const DAYS_JP = ["日", "月", "火", "水", "木", "金", "土"];
+
+    const state = {
+      dataMode: "static", // "static" (GitHub Pages ./data) | "direct" | "local"
+      manifest: null,
+      events: [],
+      eligibleItems: [],
+      selectedKey: null,
+      rank: 5000,
+      graphCache: new Map(),
+      hiddenSeries: new Set(),
+      latestPrediction: null,
+      pollingActive: false,
+      nextRefreshAt: null,
+      timerHandle: null,
+      countdownHandle: null
+    };
+
+    // スポットライト(type:2) または ポイントラリー/ポイントチャレンジ(type:1 かつ 非楽曲スコア)のみ対象
+    function getEventCategory(ev) {
+      if (!ev || !ev.hasData) return null;
+      const name = ev.name || "";
+      if (ev.type === 2 || name.includes("スポットライト")) return "spotlight";
+      if ((ev.type === 1 && ev.isSongScore === false) || name.includes("ポイント")) return "point";
+      return null;
+    }
+
+    function formatNumber(n) {
+      if (n == null || Number.isNaN(n)) return "-";
+      return Math.round(n).toLocaleString("ja-JP");
+    }
+
+    function formatJST(ms, withDate = true) {
+      const jst = new Date(ms + 9 * 3600 * 1000);
+      const m = String(jst.getUTCMonth() + 1).padStart(2, "0");
+      const day = String(jst.getUTCDate()).padStart(2, "0");
+      const wd = DAYS_JP[jst.getUTCDay()];
+      const hh = String(jst.getUTCHours()).padStart(2, "0");
+      const mm = String(jst.getUTCMinutes()).padStart(2, "0");
+      return withDate ? `${m}/${day}(${wd}) ${hh}:${mm}` : `${hh}:${mm}`;
+    }
+
+    function formatScheduleSpan(startMs, endMs) {
+      const s = new Date(startMs + 9 * 3600 * 1000);
+      const e = new Date(endMs + 9 * 3600 * 1000);
+      const sStr = `${DAYS_JP[s.getUTCDay()]}${String(s.getUTCHours()).padStart(2, "0")}:${String(s.getUTCMinutes()).padStart(2, "0")}`;
+      const eStr = `${DAYS_JP[e.getUTCDay()]}${String(e.getUTCHours()).padStart(2, "0")}:${String(e.getUTCMinutes()).padStart(2, "0")}`;
+      return `${sStr}〜${eStr}`;
+    }
+
+    function makeSafeId(eventId, chapterId) {
+      return `${eventId}__${chapterId}`.replace(/[^a-zA-Z0-9_-]/g, "_");
+    }
+
+    function buildEligibleItems(events) {
+      const now = Date.now();
+      const items = [];
+      for (const ev of events) {
+        const cat = getEventCategory(ev);
+        if (!cat) continue;
+        const chapters = Array.isArray(ev.chapters) && ev.chapters.length > 0
+          ? ev.chapters
+          : Object.keys(ev.chapterMeta || {});
+
+        for (const cid of chapters) {
+          const cm = (ev.chapterMeta && ev.chapterMeta[cid]) || {};
+          const st = cm.startTime || ev.startTime;
+          const et = cm.endTime || ev.endTime;
+          if (!st || !et) continue;
+
+          const isChapterLive = Boolean(ev.live && (ev.activeChapterId === cid || (now >= st && now <= et)));
+          const isStarted = st <= now || !ev.live;
+          if (!isStarted && !isChapterLive) continue;
+
+          const chName = cm.name ? ` / ${cm.name}` : "";
+          const catLabel = cat === "spotlight" ? "スポットライト" : "ポイントイベント";
+          const durH = (et - st) / 3600000;
+          items.push({
+            key: `${ev.eventId}::${cid}`,
+            eventId: ev.eventId,
+            chapterId: cid,
+            safeId: makeSafeId(ev.eventId, cid),
+            category: cat,
+            catLabel,
+            label: `${catLabel}${chName} (${formatJST(st, true)}〜, ${Math.round(durH)}h)${isChapterLive ? " [開催中]" : ""}`,
+            shortLabel: cm.shortName || cm.name || ev.eventId,
+            startTime: st,
+            endTime: et,
+            durationH: durH,
+            live: isChapterLive,
+            rawEvent: ev
+          });
+        }
+      }
+      items.sort((a, b) => b.startTime - a.startTime);
+      return items;
+    }
+
+    function renderEventSelector() {
+      const sel = document.getElementById("eventSelect");
+      const prev = state.selectedKey;
+      sel.innerHTML = "";
+      for (const item of state.eligibleItems) {
+        const opt = document.createElement("option");
+        opt.value = item.key;
+        opt.textContent = item.label;
+        sel.appendChild(opt);
+      }
+      if (prev && state.eligibleItems.some(x => x.key === prev)) {
+        sel.value = prev;
+      } else {
+        const liveItem = state.eligibleItems.find(x => x.live);
+        const target = liveItem || state.eligibleItems[0];
+        if (target) {
+          state.selectedKey = target.key;
+          sel.value = target.key;
+        }
+      }
+    }
+
+    function updatePollingStatus() {
+      const badge = document.getElementById("pollingBadge");
+      const text = document.getElementById("pollingText");
+      const liveEv = state.events.find(e => e.live);
+      const liveCat = getEventCategory(liveEv);
+
+      if (liveEv && liveCat) {
+        state.pollingActive = true;
+        badge.className = "badge live";
+        text.textContent = `リアルタイム監視中（${liveCat === "spotlight" ? "スポットライト" : "ポイントイベント"}開催中）`;
+        scheduleNextRefresh();
+      } else {
+        state.pollingActive = false;
+        badge.className = "badge paused";
+        const reason = liveEv ? `現在開催中「${liveEv.name}」は対象外` : "対象イベント開催外";
+        text.textContent = `自動更新停止中（${reason}）`;
+        clearTimeout(state.timerHandle);
+        state.nextRefreshAt = null;
+        document.getElementById("timerText").textContent = "次回自動更新: 停止中";
+      }
+    }
+
+    function scheduleNextRefresh() {
+      clearTimeout(state.timerHandle);
+      if (!state.pollingActive) return;
+      state.nextRefreshAt = Date.now() + REFRESH_INTERVAL_MS;
+      state.timerHandle = setTimeout(() => runFullLoad(true), REFRESH_INTERVAL_MS);
+    }
+
+    function startCountdownLoop() {
+      clearInterval(state.countdownHandle);
+      state.countdownHandle = setInterval(() => {
+        if (!state.pollingActive || !state.nextRefreshAt) return;
+        const rem = Math.max(0, state.nextRefreshAt - Date.now());
+        const m = String(Math.floor(rem / 60000)).padStart(2, "0");
+        const s = String(Math.floor((rem % 60000) / 1000)).padStart(2, "0");
+        document.getElementById("timerText").textContent = `次回自動更新: ${m}:${s}`;
+      }, 1000);
+    }
+
+    // 1. GitHub Pages 静的データ(./data/) -> 2. 直接API の順で自動取得
+    async function loadEventListAuto() {
+      const bust = `?t=${Math.floor(Date.now() / 60000)}`;
+      try {
+        const res = await fetch(`${STATIC_DATA_BASE}/events.json${bust}`, { cache: "no-store" });
+        if (!res.ok) throw new Error("No static events.json");
+        const listData = await res.json();
+        state.dataMode = "static";
+        try {
+          const mRes = await fetch(`${STATIC_DATA_BASE}/manifest.json${bust}`, { cache: "no-store" });
+          if (mRes.ok) state.manifest = await mRes.json();
+        } catch (_) {}
+        const updStr = state.manifest?.updatedAt ? ` (最終収集: ${formatJST(state.manifest.updatedAt)})` : "";
+        document.getElementById("sourceModeText").textContent = `データソース: GitHub Pages 静的キャッシュ${updStr}`;
+        state.events = listData.events || [];
+        state.eligibleItems = buildEligibleItems(state.events);
+        renderEventSelector();
+        return;
+      } catch (_) {}
+
+      // Fallback to direct API (CORS拡張機能やプロキシ環境用)
+      const res = await fetch(`${DIRECT_API_BASE}/list?region=jp&language=jpn`, { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const listData = await res.json();
+      state.dataMode = "direct";
+      document.getElementById("sourceModeText").textContent = "データソース: API直接接続";
+      state.events = listData.events || [];
+      state.eligibleItems = buildEligibleItems(state.events);
+      renderEventSelector();
+    }
+
+    async function loadGraphAuto(item, rank, force = false) {
+      const ck = `${item.eventId}::${item.chapterId}::${rank}`;
+      if (!force && state.graphCache.has(ck)) {
+        return state.graphCache.get(ck);
+      }
+      const bust = item.live ? `?t=${Math.floor(Date.now() / 60000)}` : "";
+      if (state.dataMode === "static") {
+        const url = `${STATIC_DATA_BASE}/graphs/${item.safeId}__r${rank}.json${bust}`;
+        const res = await fetch(url, { cache: item.live ? "no-store" : "default" });
+        if (res.ok) {
+          const g = await res.json();
+          if (g && Array.isArray(g.tier) && g.tier.length > 0) {
+            state.graphCache.set(ck, g);
+            return g;
+          }
+        }
+      }
+      // Fallback to direct API
+      const url = `${DIRECT_API_BASE}/graph?region=jp&rank=${rank}&border=true&music=false&event_id=${encodeURIComponent(item.eventId)}&chapter_id=${encodeURIComponent(item.chapterId)}`;
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const g = await res.json();
+      if (g && Array.isArray(g.tier) && g.tier.length > 0) {
+        state.graphCache.set(ck, g);
+      }
+      return g;
+    }
+
+    function interpScoreAtProgress(graph, prog) {
+      const st = graph.startTime;
+      const et = graph.endTime;
+      const dur = et - st;
+      const targetT = st + prog * dur;
+      const pts = graph.tier;
+      if (!pts || pts.length === 0) return null;
+      if (targetT <= pts[0][0]) {
+        return pts[0][1] * Math.max(0, (targetT - st) / Math.max(1, pts[0][0] - st));
+      }
+      if (targetT >= pts[pts.length - 1][0]) {
+        return pts[pts.length - 1][1];
+      }
+      let lo = 0, hi = pts.length - 1;
+      while (lo + 1 < hi) {
+        const mid = (lo + hi) >> 1;
+        if (pts[mid][0] <= targetT) lo = mid;
+        else hi = mid;
+      }
+      const [t0, v0] = pts[lo];
+      const [t1, v1] = pts[hi];
+      return v0 + (v1 - v0) * ((targetT - t0) / Math.max(1, t1 - t0));
+    }
+
+    function computePrediction(targetItem, targetGraph, refPairs) {
+      const st = targetGraph.startTime;
+      const et = targetGraph.endTime;
+      const dur = et - st;
+      const pts = targetGraph.tier;
+      const lastPt = pts[pts.length - 1];
+      const lastT = lastPt[0];
+      const currentScore = lastPt[1];
+      const elapsedMs = Math.max(60000, lastT - st);
+      const pCur = Math.min(1, elapsedMs / dur);
+      const isFinished = pCur >= 0.998 && !targetItem.live;
+
+      const wShort = Math.min(0.10, pCur * 0.35);
+      const sShortPrev = interpScoreAtProgress(targetGraph, Math.max(0, pCur - wShort));
+      const shortHours = (wShort * dur) / 3600000;
+      const recentPace = shortHours > 0 ? (currentScore - sShortPrev) / shortHours : 0;
+
+      const pTrendBase = Math.max(0.15, pCur - Math.min(0.25, pCur * 0.45));
+      const sTrendBase = interpScoreAtProgress(targetGraph, pTrendBase);
+      const dpTrend = Math.max(0.05, pCur - pTrendBase);
+
+      const naiveLinear = pCur > 0.02 ? currentScore / pCur : currentScore;
+
+      const targetEndHour = new Date(et + 9 * 3600 * 1000).getUTCHours();
+      const targetStartDay = new Date(st + 9 * 3600 * 1000).getUTCDay();
+
+      const refModels = [];
+      for (const { item, graph } of refPairs) {
+        if (!graph || !Array.isArray(graph.tier) || graph.tier.length < 20) continue;
+        const gDur = graph.endTime - graph.startTime;
+        const gProg = (graph.tier[graph.tier.length - 1][0] - graph.startTime) / Math.max(1, gDur);
+        if (gProg < 0.98) continue;
+
+        const hCur = interpScoreAtProgress(graph, pCur);
+        const hFinal = graph.tier[graph.tier.length - 1][1];
+        if (!hCur || hCur <= 0 || hFinal <= hCur) continue;
+
+        const rNow = currentScore / hCur;
+        const hTrendBase = interpScoreAtProgress(graph, pTrendBase);
+        const rBase = hTrendBase > 0 ? sTrendBase / hTrendBase : rNow;
+        const slopeR = (rNow - rBase) / dpTrend;
+        const rEndProj = Math.max(rNow * 0.85, rNow + slopeR * (1 - pCur) * 0.55);
+
+        const hShortPrev = interpScoreAtProgress(graph, Math.max(0, pCur - wShort));
+        const hShortHours = (wShort * gDur) / 3600000;
+        const hRecentPace = hShortHours > 0 ? (hCur - hShortPrev) / hShortHours : 0;
+        const rPace = hRecentPace > 0 ? recentPace / hRecentPace : rNow;
+
+        const multiplier = 0.55 * rEndProj + 0.45 * rPace;
+        const impliedFinal = isFinished ? currentScore : currentScore + (hFinal - hCur) * multiplier;
+
+        let weight = 1.0;
+        const refEndHour = new Date(graph.endTime + 9 * 3600 * 1000).getUTCHours();
+        const refStartDay = new Date(graph.startTime + 9 * 3600 * 1000).getUTCDay();
+        if (Math.abs(item.durationH - targetItem.durationH) < 2) weight += 0.6;
+        if (refEndHour === targetEndHour) weight += 0.6;
+        if (refStartDay === targetStartDay) weight += 1.2;
+        if (item.eventId && item.eventId === targetItem.eventId) weight += 0.8;
+
+        const scaleSim = Math.min(rNow, 1 / Math.max(1e-4, rNow));
+        weight *= (0.5 + 0.5 * scaleSim);
+
+        refModels.push({
+          item,
+          graph,
+          hCur,
+          hFinal,
+          surgeRatio: hFinal / hCur,
+          multiplier,
+          impliedFinal,
+          weight
+        });
+      }
+
+      refModels.sort((a, b) => b.weight - a.weight);
+
+      const gridSteps = 96;
+      const forecastSeries = [];
+      let centralFinal = currentScore;
+      let minFinal = currentScore;
+      let maxFinal = currentScore;
+
+      if (!isFinished && refModels.length > 0) {
+        const totalW = refModels.reduce((acc, m) => acc + m.weight, 0);
+        centralFinal = refModels.reduce((acc, m) => acc + m.impliedFinal * m.weight, 0) / totalW;
+        minFinal = Math.min(...refModels.map(m => m.impliedFinal));
+        maxFinal = Math.max(...refModels.map(m => m.impliedFinal));
+
+        for (let i = 0; i <= gridSteps; i++) {
+          const p = pCur + ((1 - pCur) * i) / gridSteps;
+          if (i === 0) {
+            forecastSeries.push({ p, elapsedH: (p * dur) / 3600000, central: currentScore, min: currentScore, max: currentScore });
+            continue;
+          }
+          let wSum = 0;
+          const vals = [];
+          for (const m of refModels) {
+            const hAtP = interpScoreAtProgress(m.graph, p);
+            const predAtP = currentScore + (hAtP - m.hCur) * m.multiplier;
+            wSum += predAtP * m.weight;
+            vals.push(predAtP);
+          }
+          forecastSeries.push({
+            p,
+            elapsedH: (p * dur) / 3600000,
+            central: wSum / totalW,
+            min: Math.min(...vals),
+            max: Math.max(...vals)
+          });
+        }
+      } else if (!isFinished) {
+        centralFinal = naiveLinear * 1.18;
+        minFinal = naiveLinear * 1.05;
+        maxFinal = naiveLinear * 1.32;
+        forecastSeries.push({ p: pCur, elapsedH: (pCur * dur) / 3600000, central: currentScore, min: currentScore, max: currentScore });
+        forecastSeries.push({ p: 1, elapsedH: dur / 3600000, central: centralFinal, min: minFinal, max: maxFinal });
+      }
+
+      const halfSpread = isFinished ? 0 : Math.max(centralFinal - minFinal, maxFinal - centralFinal);
+
+      return {
+        targetItem,
+        targetGraph,
+        rank: state.rank,
+        currentScore,
+        lastT,
+        elapsedH: elapsedMs / 3600000,
+        totalH: dur / 3600000,
+        pCur,
+        isFinished,
+        recentPace,
+        naiveLinear,
+        centralFinal,
+        minFinal,
+        maxFinal,
+        halfSpread,
+        forecastSeries,
+        refModels
+      };
+    }
+
+    function renderAll(pred) {
+      state.latestPrediction = pred;
+      const { targetItem, currentScore, lastT, elapsedH, totalH, pCur, isFinished, recentPace, naiveLinear, centralFinal, minFinal, maxFinal, halfSpread } = pred;
+
+      document.getElementById("eventSubtitle").textContent =
+        `${targetItem.catLabel} / ${targetItem.shortLabel}（${state.rank.toLocaleString()}位ボーダー）｜開催: ${formatJST(targetItem.startTime)} 〜 ${formatJST(targetItem.endTime)}｜最新取得: ${formatJST(lastT)}`;
+
+      document.getElementById("kpiCurrent").textContent = `${formatNumber(currentScore)} pt`;
+      document.getElementById("kpiCurrentSub").textContent =
+        `経過 ${elapsedH.toFixed(1)}h / ${totalH.toFixed(0)}h（進捗 ${(pCur * 100).toFixed(1)}%）`;
+
+      document.getElementById("kpiForecast").textContent = `${formatNumber(centralFinal)} pt`;
+      const diffLinear = centralFinal - naiveLinear;
+      document.getElementById("kpiForecastSub").textContent = isFinished
+        ? "イベント終了・確定スコア"
+        : `予測誤差目安: ±${formatNumber(halfSpread)} pt（単純比例比 ${diffLinear >= 0 ? "+" : ""}${formatNumber(diffLinear)}）`;
+
+      document.getElementById("kpiRange").textContent = `${formatNumber(minFinal)} 〜 ${formatNumber(maxFinal)}`;
+      document.getElementById("kpiRangeSub").textContent = `完了済み過去 ${pred.refModels.length}件の推移曲線に基づく幅`;
+
+      const remGain = Math.max(0, centralFinal - currentScore);
+      const remH = Math.max(0, totalH - elapsedH);
+      document.getElementById("kpiPace").textContent = `${formatNumber(recentPace)} pt/h`;
+      document.getElementById("kpiPaceSub").textContent = isFinished
+        ? "残り時間なし"
+        : `残り${remH.toFixed(1)}h 予測増分: +${formatNumber(remGain)} pt`;
+
+      renderChart(pred);
+      renderMilestoneTable(pred);
+      renderHistoryTable(pred);
+      renderShareCard(pred);
+    }
+
+    function renderChart(pred) {
+      const svg = document.getElementById("trendChart");
+      const { targetGraph, totalH, pCur, isFinished, naiveLinear, forecastSeries, refModels } = pred;
+
+      const legendBar = document.getElementById("legendBar");
+      legendBar.innerHTML = "";
+      const legendItems = [
+        { id: "actual", label: `${pred.targetItem.shortLabel} (実績)`, color: "#1d4ed8", type: "solid" },
+        ...(!isFinished ? [
+          { id: "forecast", label: "着地予測曲線", color: "#c2410c", type: "dashed" },
+          { id: "linear", label: "単純比例参考線", color: "#9ca3af", type: "dotted" }
+        ] : []),
+        ...refModels.map((m, idx) => ({
+          id: m.item.key,
+          label: `${m.item.shortLabel}`,
+          color: HIST_COLORS[idx % HIST_COLORS.length],
+          type: "solid"
+        }))
+      ];
+
+      for (const li of legendItems) {
+        const el = document.createElement("span");
+        el.className = `legend-item ${state.hiddenSeries.has(li.id) ? "off" : ""}`;
+        const sw = document.createElement("span");
+        sw.className = `swatch ${li.type === "dashed" ? "dashed" : li.type === "dotted" ? "dotted" : ""}`;
+        if (li.type === "solid") sw.style.background = li.color;
+        el.appendChild(sw);
+        el.appendChild(document.createTextNode(li.label));
+        el.onclick = () => {
+          if (state.hiddenSeries.has(li.id)) state.hiddenSeries.delete(li.id);
+          else state.hiddenSeries.add(li.id);
+          renderChart(pred);
+        };
+        legendBar.appendChild(el);
+      }
+
+      let maxY = Math.max(pred.maxFinal, pred.currentScore, naiveLinear);
+      for (const m of refModels) {
+        if (!state.hiddenSeries.has(m.item.key)) maxY = Math.max(maxY, m.hFinal);
+      }
+      maxY = Math.ceil((maxY * 1.06) / 100000) * 100000 || 500000;
+
+      const W = 1000, H = 360;
+      const padL = 74, padR = 24, padT = 16, padB = 34;
+      const plotW = W - padL - padR;
+      const plotH = H - padT - padB;
+
+      const xOfP = (p) => padL + Math.max(0, Math.min(1, p)) * plotW;
+      const yOfV = (v) => padT + plotH - (Math.max(0, v) / maxY) * plotH;
+
+      let out = "";
+
+      for (let i = 0; i <= 5; i++) {
+        const val = (maxY * i) / 5;
+        const y = yOfV(val);
+        out += `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="#eceff3" stroke-width="1" />`;
+        const label = val >= 10000 ? `${(val / 10000).toFixed(0)}万` : formatNumber(val);
+        out += `<text x="${padL - 8}" y="${y + 4}" text-anchor="end" fill="#6b7280" font-size="11" font-family="monospace">${label}</text>`;
+      }
+
+      const stepH = totalH <= 48 ? 6 : 24;
+      for (let h = 0; h <= totalH; h += stepH) {
+        const p = h / totalH;
+        const x = xOfP(p);
+        out += `<line x1="${x}" y1="${padT}" x2="${x}" y2="${padT + plotH}" stroke="#f1f3f6" stroke-width="1" />`;
+        out += `<text x="${x}" y="${H - 10}" text-anchor="middle" fill="#6b7280" font-size="11" font-family="monospace">${h}h</text>`;
+      }
+
+      refModels.forEach((m, idx) => {
+        if (state.hiddenSeries.has(m.item.key)) return;
+        const color = HIST_COLORS[idx % HIST_COLORS.length];
+        const g = m.graph;
+        const dur = g.endTime - g.startTime;
+        const step = Math.max(1, Math.floor(g.tier.length / 180));
+        let d = "";
+        for (let i = 0; i < g.tier.length; i += step) {
+          const [t, v] = g.tier[i];
+          d += `${i === 0 ? "M" : "L"}${xOfP((t - g.startTime) / dur).toFixed(1)},${yOfV(v).toFixed(1)}`;
+        }
+        const [lt, lv] = g.tier[g.tier.length - 1];
+        d += `L${xOfP((lt - g.startTime) / dur).toFixed(1)},${yOfV(lv).toFixed(1)}`;
+        out += `<path d="${d}" fill="none" stroke="${color}" stroke-width="1.4" stroke-opacity="0.65" />`;
+      });
+
+      if (!isFinished && !state.hiddenSeries.has("linear")) {
+        out += `<line x1="${xOfP(0)}" y1="${yOfV(0)}" x2="${xOfP(1)}" y2="${yOfV(naiveLinear)}" stroke="#9ca3af" stroke-width="1.5" stroke-dasharray="3,4" />`;
+      }
+
+      if (!isFinished && !state.hiddenSeries.has("forecast") && forecastSeries.length > 1) {
+        const topPts = [];
+        const botPts = [];
+        let midPath = "";
+        forecastSeries.forEach((pt, i) => {
+          const x = xOfP(pt.p).toFixed(1);
+          topPts.push(`${x},${yOfV(pt.max).toFixed(1)}`);
+          botPts.unshift(`${x},${yOfV(pt.min).toFixed(1)}`);
+          midPath += `${i === 0 ? "M" : "L"}${x},${yOfV(pt.central).toFixed(1)}`;
+        });
+        out += `<polygon points="${topPts.concat(botPts).join(" ")}" fill="#c2410c" fill-opacity="0.10" />`;
+        out += `<path d="${midPath}" fill="none" stroke="#c2410c" stroke-width="2.5" stroke-dasharray="6,4" />`;
+      }
+
+      if (!state.hiddenSeries.has("actual")) {
+        const dur = targetGraph.endTime - targetGraph.startTime;
+        const pts = targetGraph.tier;
+        const step = Math.max(1, Math.floor(pts.length / 220));
+        let d = "";
+        for (let i = 0; i < pts.length; i += step) {
+          const [t, v] = pts[i];
+          d += `${i === 0 ? "M" : "L"}${xOfP((t - targetGraph.startTime) / dur).toFixed(1)},${yOfV(v).toFixed(1)}`;
+        }
+        const [lt, lv] = pts[pts.length - 1];
+        const lx = xOfP((lt - targetGraph.startTime) / dur);
+        const ly = yOfV(lv);
+        d += `L${lx.toFixed(1)},${ly.toFixed(1)}`;
+        out += `<path d="${d}" fill="none" stroke="#1d4ed8" stroke-width="2.8" />`;
+        out += `<circle cx="${lx.toFixed(1)}" cy="${ly.toFixed(1)}" r="4" fill="#1d4ed8" stroke="#ffffff" stroke-width="1.5" />`;
+      }
+
+      out += `<line id="hoverLine" x1="0" y1="${padT}" x2="0" y2="${padT + plotH}" stroke="#374151" stroke-width="1" stroke-dasharray="2,2" visibility="hidden" />`;
+      out += `<rect id="hoverOverlay" x="${padL}" y="${padT}" width="${plotW}" height="${plotH}" fill="transparent" />`;
+
+      svg.innerHTML = out;
+
+      const overlay = svg.getElementById("hoverOverlay");
+      const hoverLine = svg.getElementById("hoverLine");
+      const tooltip = document.getElementById("chartTooltip");
+      const wrap = document.getElementById("chartWrap");
+
+      overlay.addEventListener("mousemove", (e) => {
+        const rect = svg.getBoundingClientRect();
+        const relX = ((e.clientX - rect.left) / rect.width) * W;
+        const p = Math.max(0, Math.min(1, (relX - padL) / plotW));
+        const gx = xOfP(p);
+        hoverLine.setAttribute("x1", gx);
+        hoverLine.setAttribute("x2", gx);
+        hoverLine.setAttribute("visibility", "visible");
+
+        const targetTime = targetGraph.startTime + p * (targetGraph.endTime - targetGraph.startTime);
+        const elH = p * totalH;
+        let html = `<div class="num" style="font-weight:700;border-bottom:1px solid #374151;padding-bottom:4px;margin-bottom:4px;">経過 ${elH.toFixed(1)}h（${formatJST(targetTime)}）</div>`;
+
+        if (p <= pCur) {
+          const val = interpScoreAtProgress(targetGraph, p);
+          html += `<div class="num" style="color:#93c5fd;">実績: ${formatNumber(val)} pt</div>`;
+        } else if (!isFinished && forecastSeries.length > 0) {
+          let best = forecastSeries[0];
+          for (const pt of forecastSeries) {
+            if (Math.abs(pt.p - p) < Math.abs(best.p - p)) best = pt;
+          }
+          html += `<div class="num" style="color:#fdba74;">予測本命: ${formatNumber(best.central)} pt</div>`;
+          html += `<div class="num" style="color:#d1d5db;">予測幅: ${formatNumber(best.min)} 〜 ${formatNumber(best.max)}</div>`;
+        }
+
+        for (const m of refModels) {
+          if (state.hiddenSeries.has(m.item.key)) continue;
+          const hv = interpScoreAtProgress(m.graph, p);
+          html += `<div class="num" style="color:#9ca3af;">${m.item.shortLabel}: ${formatNumber(hv)} pt</div>`;
+        }
+
+        tooltip.innerHTML = html;
+        tooltip.style.display = "block";
+        const wrapRect = wrap.getBoundingClientRect();
+        const left = e.clientX - wrapRect.left + 14;
+        tooltip.style.left = `${left + 225 > wrapRect.width ? left - 240 : left}px`;
+        tooltip.style.top = `${Math.max(10, e.clientY - wrapRect.top - 20)}px`;
+      });
+
+      overlay.addEventListener("mouseleave", () => {
+        hoverLine.setAttribute("visibility", "hidden");
+        tooltip.style.display = "none";
+      });
+    }
+
+    function renderMilestoneTable(pred) {
+      const tbody = document.getElementById("milestoneBody");
+      tbody.innerHTML = "";
+      const { targetGraph, currentScore, pCur, isFinished, forecastSeries } = pred;
+      const st = targetGraph.startTime;
+      const et = targetGraph.endTime;
+      const dur = et - st;
+
+      if (isFinished || forecastSeries.length === 0) {
+        tbody.innerHTML = `<tr class="highlight"><td class="num">${formatJST(et)}</td><td class="num">終了</td><td class="num">${formatNumber(currentScore)} pt</td><td class="num">-</td><td class="num">-</td></tr>`;
+        return;
+      }
+
+      const remHoursTotal = ((1 - pCur) * dur) / 3600000;
+      const candidateRemH = [6, 4, 2, 1, 0.5, 0].filter(h => h < remHoursTotal - 0.15 || h === 0);
+      const checkpoints = [{ p: pCur, remH: remHoursTotal, isNow: true }];
+      for (const rh of candidateRemH) {
+        checkpoints.push({ p: Math.max(pCur, 1 - (rh * 3600000) / dur), remH: rh, isNow: false });
+      }
+
+      let prevVal = currentScore;
+      let prevP = pCur;
+
+      checkpoints.forEach((cp) => {
+        let central = currentScore, minV = currentScore, maxV = currentScore;
+        if (!cp.isNow) {
+          let best = forecastSeries[0];
+          for (const pt of forecastSeries) {
+            if (Math.abs(pt.p - cp.p) < Math.abs(best.p - cp.p)) best = pt;
+          }
+          central = best.central;
+          minV = best.min;
+          maxV = best.max;
+        }
+        const dtH = ((cp.p - prevP) * dur) / 3600000;
+        const pace = dtH > 0.01 ? (central - prevVal) / dtH : pred.recentPace;
+        prevVal = central;
+        prevP = cp.p;
+
+        const tr = document.createElement("tr");
+        if (cp.remH === 0) tr.className = "highlight";
+        const remLabel = cp.isNow ? `現在 (残${cp.remH.toFixed(1)}h)` : cp.remH === 0 ? "終了時刻" : `残り ${cp.remH}h`;
+        tr.innerHTML = `
+          <td class="num">${formatJST(st + cp.p * dur)}</td>
+          <td class="num">${remLabel}</td>
+          <td class="num">${formatNumber(central)} pt</td>
+          <td class="num">${cp.isNow ? "-" : `${formatNumber(minV)}〜${formatNumber(maxV)}`}</td>
+          <td class="num">${formatNumber(pace)} /h</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function renderHistoryTable(pred) {
+      const tbody = document.getElementById("historyBody");
+      tbody.innerHTML = "";
+      if (pred.refModels.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);">比較可能な過去完了データがありません</td></tr>`;
+        return;
+      }
+      for (const m of pred.refModels) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${m.item.shortLabel}</td>
+          <td class="num">${formatScheduleSpan(m.item.startTime, m.item.endTime)}</td>
+          <td class="num">${formatNumber(m.hCur)}</td>
+          <td class="num">${formatNumber(m.hFinal)}</td>
+          <td class="num">${m.weight.toFixed(2)}</td>
+          <td class="num" style="font-weight:600;">${formatNumber(m.impliedFinal)} pt</td>
+        `;
+        tbody.appendChild(tr);
+      }
+    }
+
+    // =========================================================================
+    // 順位ティア別テーマ定義（~T1000:虹色, T5000:紫輝く, T10000:プラチナ, T50000:ゴールド, T100000:シルバー, それ以下:ブロンズ）
+    // =========================================================================
+    function getTierTheme(rank) {
+      const override = document.getElementById("themeOverrideSelect")?.value || "auto";
+      let key = override;
+      if (key === "auto") {
+        if (rank <= 1000) key = "rainbow";
+        else if (rank <= 5000) key = "purple";
+        else if (rank <= 10000) key = "platinum";
+        else if (rank <= 50000) key = "gold";
+        else if (rank <= 100000) key = "silver";
+        else key = "bronze";
+      }
+
+      const themes = {
+        rainbow: {
+          key: "rainbow",
+          label: "虹色（RAINBOW PRISM / 〜T1000）",
+          bgStops: ["#0c0a1d", "#181236", "#0b192c"],
+          borderStops: ["#ff4d6d", "#ffb703", "#06d6a0", "#3a86ff", "#c77dff", "#ff4d6d"],
+          primary: "#ffffff",
+          accent: "#38bdf8",
+          forecast: "#ffbe0b",
+          bandFill: "rgba(255, 190, 11, 0.20)",
+          glowColor: "rgba(168, 85, 247, 0.75)",
+          sparkle: true,
+          rainbow: true,
+          dotCss: "linear-gradient(135deg, #ff4d6d, #ffb703, #06d6a0, #3a86ff, #c77dff)"
+        },
+        purple: {
+          key: "purple",
+          label: "紫・輝く（RADIANT VIOLET / T5000）",
+          bgStops: ["#120724", "#240e47", "#140829"],
+          borderStops: ["#a855f7", "#f0abfc", "#7e22ce", "#e879f9"],
+          primary: "#f3e8ff",
+          accent: "#d8b4fe",
+          forecast: "#f0abfc",
+          bandFill: "rgba(216, 180, 254, 0.20)",
+          glowColor: "rgba(217, 70, 239, 0.85)",
+          sparkle: true,
+          rainbow: false,
+          dotCss: "linear-gradient(135deg, #7e22ce, #e879f9)"
+        },
+        platinum: {
+          key: "platinum",
+          label: "プラチナ（PLATINUM / T10000）",
+          bgStops: ["#101822", "#1e2c3d", "#131c28"],
+          borderStops: ["#e0f2fe", "#7dd3fc", "#f8fafc", "#38bdf8"],
+          primary: "#f0f9ff",
+          accent: "#7dd3fc",
+          forecast: "#bae6fd",
+          bandFill: "rgba(125, 211, 252, 0.18)",
+          glowColor: "rgba(125, 211, 252, 0.55)",
+          sparkle: false,
+          rainbow: false,
+          dotCss: "linear-gradient(135deg, #bae6fd, #f8fafc)"
+        },
+        gold: {
+          key: "gold",
+          label: "ゴールド（ROYAL GOLD / T50000）",
+          bgStops: ["#1c1507", "#33260c", "#1a1306"],
+          borderStops: ["#fde047", "#f59e0b", "#fef08a", "#d97706"],
+          primary: "#fef9c3",
+          accent: "#fde047",
+          forecast: "#fbbf24",
+          bandFill: "rgba(251, 191, 36, 0.18)",
+          glowColor: "rgba(245, 158, 11, 0.50)",
+          sparkle: false,
+          rainbow: false,
+          dotCss: "linear-gradient(135deg, #f59e0b, #fef08a)"
+        },
+        silver: {
+          key: "silver",
+          label: "シルバー（METALLIC SILVER / T100000）",
+          bgStops: ["#14171c", "#262b34", "#161920"],
+          borderStops: ["#e2e8f0", "#94a3b8", "#f1f5f9", "#64748b"],
+          primary: "#f1f5f9",
+          accent: "#cbd5e1",
+          forecast: "#e2e8f0",
+          bandFill: "rgba(203, 213, 225, 0.16)",
+          glowColor: "rgba(148, 163, 184, 0.35)",
+          sparkle: false,
+          rainbow: false,
+          dotCss: "linear-gradient(135deg, #94a3b8, #f1f5f9)"
+        },
+        bronze: {
+          key: "bronze",
+          label: "ブロンズ（COPPER BRONZE / T100000超）",
+          bgStops: ["#1a100b", "#2e1c13", "#180e0a"],
+          borderStops: ["#fdba74", "#c2410c", "#fed7aa", "#9a3412"],
+          primary: "#ffedd5",
+          accent: "#fdba74",
+          forecast: "#fb923c",
+          bandFill: "rgba(251, 146, 60, 0.16)",
+          glowColor: "rgba(194, 65, 12, 0.35)",
+          sparkle: false,
+          rainbow: false,
+          dotCss: "linear-gradient(135deg, #9a3412, #fdba74)"
+        }
+      };
+
+      return themes[key] || themes.silver;
+    }
+
+    function drawRoundRect(ctx, x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+    }
+
+    function renderShareCard(pred) {
+      if (!pred) return;
+      const canvas = document.getElementById("shareCanvas");
+      const ctx = canvas.getContext("2d");
+      const W = canvas.width;
+      const H = canvas.height;
+      const theme = getTierTheme(pred.rank);
+
+      document.getElementById("tierThemeDot").style.background = theme.dotCss;
+      document.getElementById("tierThemeLabel").textContent = `適用テーマ: ${theme.label}`;
+
+      ctx.clearRect(0, 0, W, H);
+
+      // 1. 背景グラデーション
+      const bgGrad = ctx.createLinearGradient(0, 0, W, H);
+      bgGrad.addColorStop(0, theme.bgStops[0]);
+      bgGrad.addColorStop(0.5, theme.bgStops[1]);
+      bgGrad.addColorStop(1, theme.bgStops[2]);
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, W, H);
+
+      // 背景装飾グリッド＆オーラ光彩
+      const radial = ctx.createRadialGradient(W * 0.78, H * 0.22, 20, W * 0.78, H * 0.22, 460);
+      radial.addColorStop(0, theme.glowColor);
+      radial.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = radial;
+      ctx.fillRect(0, 0, W, H);
+
+      if (theme.rainbow) {
+        const rbAura = ctx.createLinearGradient(0, 0, W, H);
+        rbAura.addColorStop(0, "rgba(255, 77, 109, 0.14)");
+        rbAura.addColorStop(0.25, "rgba(255, 183, 3, 0.12)");
+        rbAura.addColorStop(0.5, "rgba(6, 214, 160, 0.12)");
+        rbAura.addColorStop(0.75, "rgba(58, 134, 255, 0.14)");
+        rbAura.addColorStop(1, "rgba(199, 125, 255, 0.16)");
+        ctx.fillStyle = rbAura;
+        ctx.fillRect(0, 0, W, H);
+      }
+
+      // 輝きパーティクル演出（虹色・紫テーマ）
+      if (theme.sparkle) {
+        const stars = [
+          [90, 95, 3.2], [240, 62, 2.0], [1080, 88, 3.8], [1120, 210, 2.4],
+          [980, 140, 2.8], [760, 75, 2.2], [1030, 560, 3.0], [140, 590, 2.5],
+          [620, 110, 1.8], [880, 610, 2.2], [1140, 480, 2.9], [460, 58, 2.4]
+        ];
+        for (const [sx, sy, sr] of stars) {
+          ctx.save();
+          ctx.fillStyle = "#ffffff";
+          ctx.shadowColor = theme.forecast;
+          ctx.shadowBlur = 14;
+          ctx.beginPath();
+          ctx.arc(sx, sy, sr, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+
+      // 2. 外周メタリック／プリズムフレーム
+      const borderGrad = ctx.createLinearGradient(0, 0, W, H);
+      theme.borderStops.forEach((c, idx) => {
+        borderGrad.addColorStop(idx / Math.max(1, theme.borderStops.length - 1), c);
+      });
+      ctx.save();
+      drawRoundRect(ctx, 16, 16, W - 32, H - 32, 18);
+      ctx.lineWidth = 5;
+      ctx.strokeStyle = borderGrad;
+      if (theme.sparkle) {
+        ctx.shadowColor = theme.glowColor;
+        ctx.shadowBlur = 22;
+      }
+      ctx.stroke();
+      ctx.restore();
+
+      // 3. ヘッダー情報（イベント名・チャプター・順位バッジ）
+      ctx.fillStyle = "rgba(255, 255, 255, 0.68)";
+      ctx.font = "600 18px sans-serif";
+      ctx.fillText(`${pred.targetItem.catLabel}  ｜  開催: ${formatJST(pred.targetItem.startTime)} 〜 ${formatJST(pred.targetItem.endTime)}`, 48, 66);
+
+      ctx.save();
+      ctx.font = "800 36px sans-serif";
+      ctx.fillStyle = theme.primary;
+      if (theme.sparkle) {
+        ctx.shadowColor = theme.glowColor;
+        ctx.shadowBlur = 16;
+      }
+      ctx.fillText(`${pred.targetItem.shortLabel}`, 48, 112);
+      ctx.restore();
+
+      // 順位バッジ（右上）
+      const rankBadgeW = 240;
+      const rankBadgeH = 54;
+      const rankBadgeX = W - 48 - rankBadgeW;
+      const rankBadgeY = 48;
+      ctx.save();
+      drawRoundRect(ctx, rankBadgeX, rankBadgeY, rankBadgeW, rankBadgeH, 10);
+      ctx.fillStyle = "rgba(255, 255, 255, 0.09)";
+      ctx.fill();
+      ctx.lineWidth = 2.5;
+      ctx.strokeStyle = borderGrad;
+      ctx.stroke();
+      ctx.fillStyle = theme.primary;
+      ctx.font = "800 26px monospace";
+      ctx.textAlign = "center";
+      ctx.fillText(`T${pred.rank.toLocaleString()} ボーダー`, rankBadgeX + rankBadgeW / 2, rankBadgeY + 36);
+      ctx.restore();
+
+      // 4. メイン予測数値カード（左カラム）
+      const leftX = 48;
+      const leftY = 142;
+      const leftW = 430;
+      const leftH = 472;
+      ctx.save();
+      drawRoundRect(ctx, leftX, leftY, leftW, leftH, 14);
+      ctx.fillStyle = "rgba(0, 0, 0, 0.36)";
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.16)";
+      ctx.stroke();
+      ctx.restore();
+
+      // 予測ボーダー本命＋±誤差
+      ctx.fillStyle = "rgba(255, 255, 255, 0.72)";
+      ctx.font = "700 17px sans-serif";
+      ctx.fillText(pred.isFinished ? "最終確定ボーダー" : "最終着地予測ボーダー（本命）", leftX + 26, leftY + 42);
+
+      ctx.save();
+      ctx.font = "800 46px monospace";
+      if (theme.rainbow) {
+        const txtGrad = ctx.createLinearGradient(leftX + 26, 0, leftX + 390, 0);
+        txtGrad.addColorStop(0, "#ff758f");
+        txtGrad.addColorStop(0.35, "#ffd166");
+        txtGrad.addColorStop(0.7, "#06d6a0");
+        txtGrad.addColorStop(1, "#60a5fa");
+        ctx.fillStyle = txtGrad;
+      } else {
+        ctx.fillStyle = theme.forecast;
+      }
+      if (theme.sparkle) {
+        ctx.shadowColor = theme.glowColor;
+        ctx.shadowBlur = 18;
+      }
+      ctx.fillText(`${formatNumber(pred.centralFinal)} pt`, leftX + 26, leftY + 98);
+      ctx.restore();
+
+      // ±誤差表記＆下限〜上限レンジ
+      if (!pred.isFinished) {
+        ctx.fillStyle = theme.accent;
+        ctx.font = "700 22px monospace";
+        ctx.fillText(`誤差目安: ±${formatNumber(pred.halfSpread)} pt`, leftX + 26, leftY + 136);
+
+        ctx.fillStyle = "rgba(255, 255, 255, 0.78)";
+        ctx.font = "600 16px monospace";
+        ctx.fillText(`レンジ: ${formatNumber(pred.minFinal)} 〜 ${formatNumber(pred.maxFinal)}`, leftX + 26, leftY + 166);
+      } else {
+        ctx.fillStyle = theme.accent;
+        ctx.font = "700 20px sans-serif";
+        ctx.fillText("イベント終了・確定値", leftX + 26, leftY + 138);
+      }
+
+      // 区切り線
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.14)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(leftX + 24, leftY + 190);
+      ctx.lineTo(leftX + leftW - 24, leftY + 190);
+      ctx.stroke();
+
+      // サブ指標リスト
+      const subRows = [
+        ["現在スコア", `${formatNumber(pred.currentScore)} pt`],
+        ["経過 / 進捗", `${pred.elapsedH.toFixed(1)}h / ${pred.totalH.toFixed(0)}h (${(pred.pCur * 100).toFixed(1)}%)`],
+        ["直近平均時速", `${formatNumber(pred.recentPace)} pt/h`],
+        ["残り予測増分", pred.isFinished ? "0 pt" : `+${formatNumber(Math.max(0, pred.centralFinal - pred.currentScore))} pt`],
+        ["基準データ時刻", formatJST(pred.lastT)]
+      ];
+
+      subRows.forEach(([k, v], idx) => {
+        const ry = leftY + 232 + idx * 46;
+        ctx.fillStyle = "rgba(255, 255, 255, 0.62)";
+        ctx.font = "600 16px sans-serif";
+        ctx.fillText(k, leftX + 26, ry);
+
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "700 17px monospace";
+        ctx.textAlign = "right";
+        ctx.fillText(v, leftX + leftW - 26, ry);
+        ctx.textAlign = "left";
+      });
+
+      // 5. グラフエリア（右カラム）
+      const rightX = 502;
+      const rightY = 142;
+      const rightW = W - rightX - 48;
+      const rightH = 472;
+
+      ctx.save();
+      drawRoundRect(ctx, rightX, rightY, rightW, rightH, 14);
+      ctx.fillStyle = "rgba(0, 0, 0, 0.36)";
+      ctx.fill();
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = "rgba(255, 255, 255, 0.16)";
+      ctx.stroke();
+      ctx.restore();
+
+      const gPadL = 78, gPadR = 26, gPadT = 48, gPadB = 46;
+      const plotX = rightX + gPadL;
+      const plotY = rightY + gPadT;
+      const plotW = rightW - gPadL - gPadR;
+      const plotH = rightH - gPadT - gPadB;
+
+      // グラフヘッダー凡例
+      ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+      ctx.font = "700 15px sans-serif";
+      ctx.fillText("推移実績 & 着地予測レンジ", rightX + 24, rightY + 30);
+
+      let maxY = Math.max(pred.maxFinal, pred.currentScore);
+      for (const m of pred.refModels.slice(0, 3)) maxY = Math.max(maxY, m.hFinal);
+      maxY = Math.ceil((maxY * 1.06) / 100000) * 100000 || 500000;
+
+      const xOf = (p) => plotX + Math.max(0, Math.min(1, p)) * plotW;
+      const yOf = (v) => plotY + plotH - (Math.max(0, v) / maxY) * plotH;
+
+      // Y軸グリッド
+      ctx.font = "600 13px monospace";
+      ctx.textAlign = "right";
+      for (let i = 0; i <= 5; i++) {
+        const val = (maxY * i) / 5;
+        const gy = yOf(val);
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.10)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(plotX, gy);
+        ctx.lineTo(plotX + plotW, gy);
+        ctx.stroke();
+
+        ctx.fillStyle = "rgba(255, 255, 255, 0.65)";
+        const lbl = val >= 10000 ? `${(val / 10000).toFixed(0)}万` : formatNumber(val);
+        ctx.fillText(lbl, plotX - 10, gy + 4);
+      }
+
+      // X軸グリッド
+      ctx.textAlign = "center";
+      const stepH = pred.totalH <= 48 ? 6 : 24;
+      for (let h = 0; h <= pred.totalH; h += stepH) {
+        const gx = xOf(h / pred.totalH);
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.07)";
+        ctx.beginPath();
+        ctx.moveTo(gx, plotY);
+        ctx.lineTo(gx, plotY + plotH);
+        ctx.stroke();
+
+        ctx.fillStyle = "rgba(255, 255, 255, 0.65)";
+        ctx.fillText(`${h}h`, gx, plotY + plotH + 22);
+      }
+      ctx.textAlign = "left";
+
+      // 過去上位2件の薄い参考線
+      pred.refModels.slice(0, 2).forEach((m) => {
+        const g = m.graph;
+        const dur = g.endTime - g.startTime;
+        ctx.save();
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.22)";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        const step = Math.max(1, Math.floor(g.tier.length / 120));
+        for (let i = 0; i < g.tier.length; i += step) {
+          const [t, v] = g.tier[i];
+          const px = xOf((t - g.startTime) / dur);
+          const py = yOf(v);
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.stroke();
+        ctx.restore();
+      });
+
+      // 予測誤差バンド＆予測曲線
+      if (!pred.isFinished && pred.forecastSeries.length > 1) {
+        ctx.save();
+        ctx.fillStyle = theme.bandFill;
+        ctx.beginPath();
+        pred.forecastSeries.forEach((pt, i) => {
+          const px = xOf(pt.p);
+          const py = yOf(pt.max);
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        });
+        for (let i = pred.forecastSeries.length - 1; i >= 0; i--) {
+          const pt = pred.forecastSeries[i];
+          ctx.lineTo(xOf(pt.p), yOf(pt.min));
+        }
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.setLineDash([8, 6]);
+        ctx.lineWidth = 3.2;
+        ctx.strokeStyle = theme.forecast;
+        if (theme.sparkle) {
+          ctx.shadowColor = theme.glowColor;
+          ctx.shadowBlur = 10;
+        }
+        ctx.beginPath();
+        pred.forecastSeries.forEach((pt, i) => {
+          const px = xOf(pt.p);
+          const py = yOf(pt.central);
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        });
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // 実績線
+      const tPts = pred.targetGraph.tier;
+      const tDur = pred.targetGraph.endTime - pred.targetGraph.startTime;
+      ctx.save();
+      if (theme.rainbow) {
+        const lineGrad = ctx.createLinearGradient(plotX, 0, plotX + plotW, 0);
+        lineGrad.addColorStop(0, "#ff4d6d");
+        lineGrad.addColorStop(0.3, "#ffb703");
+        lineGrad.addColorStop(0.6, "#06d6a0");
+        lineGrad.addColorStop(1, "#3a86ff");
+        ctx.strokeStyle = lineGrad;
+      } else {
+        ctx.strokeStyle = theme.accent;
+      }
+      ctx.lineWidth = 4;
+      if (theme.sparkle) {
+        ctx.shadowColor = theme.glowColor;
+        ctx.shadowBlur = 12;
+      }
+      ctx.beginPath();
+      const step = Math.max(1, Math.floor(tPts.length / 180));
+      for (let i = 0; i < tPts.length; i += step) {
+        const [t, v] = tPts[i];
+        const px = xOf((t - pred.targetGraph.startTime) / tDur);
+        const py = yOf(v);
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      const [lt, lv] = tPts[tPts.length - 1];
+      const lx = xOf((lt - pred.targetGraph.startTime) / tDur);
+      const ly = yOf(lv);
+      ctx.lineTo(lx, ly);
+      ctx.stroke();
+
+      // 現在地点マーカー
+      ctx.fillStyle = "#ffffff";
+      ctx.beginPath();
+      ctx.arc(lx, ly, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // 着地予測ポイントラベル（グラフ右端）
+      const endY = yOf(pred.centralFinal);
+      ctx.save();
+      ctx.fillStyle = theme.forecast;
+      ctx.beginPath();
+      ctx.arc(xOf(1), endY, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // フッタークレジット
+      ctx.fillStyle = "rgba(255, 255, 255, 0.45)";
+      ctx.font = "600 13px monospace";
+      ctx.textAlign = "right";
+      ctx.fillText(`Generated at ${formatJST(Date.now())} JST`, W - 48, H - 28);
+      ctx.textAlign = "left";
+    }
+
+    async function loadSelectedAndPredict(forceRefresh = false) {
+      const targetItem = state.eligibleItems.find(x => x.key === state.selectedKey);
+      if (!targetItem) return;
+
+      const targetGraph = await loadGraphAuto(targetItem, state.rank, forceRefresh);
+
+      const sameCategoryRefs = state.eligibleItems
+        .filter(x => x.category === targetItem.category && x.key !== targetItem.key && !x.live)
+        .slice(0, 10);
+
+      const refPairs = [];
+      for (const refItem of sameCategoryRefs) {
+        try {
+          const g = await loadGraphAuto(refItem, state.rank, false);
+          if (g && Array.isArray(g.tier) && g.tier.length > 0) {
+            refPairs.push({ item: refItem, graph: g });
+          }
+        } catch (_) {}
+      }
+
+      const pred = computePrediction(targetItem, targetGraph, refPairs);
+      renderAll(pred);
+    }
+
+    async function runFullLoad(forceRefresh = false) {
+      try {
+        await loadEventListAuto();
+        updatePollingStatus();
+        await loadSelectedAndPredict(forceRefresh);
+      } catch (err) {
+        console.error(err);
+        const badge = document.getElementById("pollingBadge");
+        badge.className = "badge error";
+        document.getElementById("pollingText").textContent = "データ未取得（GitHub Actions未実行またはローカルJSON読込待ち）";
+        document.getElementById("eventSubtitle").textContent =
+          "GitHub Actions の「Fetch Event Borders」を実行して data/ を生成するか、右上の「JSON読込」からファイルを選択してください。";
+      }
+    }
+
+    // 画像ダウンロード & クリップボードコピー
+    document.getElementById("downloadImgBtn").addEventListener("click", () => {
+      const canvas = document.getElementById("shareCanvas");
+      const pred = state.latestPrediction;
+      const name = pred ? `${pred.targetItem.shortLabel}_T${pred.rank}` : "border_forecast";
+      const link = document.createElement("a");
+      link.download = `${name}.png`;
+      link.href = canvas.toDataURL("image/png");
+      link.click();
+    });
+
+    document.getElementById("copyImgBtn").addEventListener("click", () => {
+      const canvas = document.getElementById("shareCanvas");
+      const fb = document.getElementById("copyFeedback");
+      canvas.toBlob(async (blob) => {
+        if (!blob) return;
+        try {
+          await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+          fb.textContent = "クリップボードに画像をコピーしました（Ctrl+V で貼り付けできます）";
+          setTimeout(() => { fb.textContent = ""; }, 4000);
+        } catch (err) {
+          fb.style.color = "#b91c1c";
+          fb.textContent = "コピーに失敗しました（HTTPS環境またはダウンロードをご利用ください）";
+        }
+      }, "image/png");
+    });
+
+    document.getElementById("themeOverrideSelect").addEventListener("change", () => {
+      if (state.latestPrediction) renderShareCard(state.latestPrediction);
+    });
+
+    // ローカルJSON複数読込フォールバック
+    document.getElementById("localFileInput").addEventListener("change", async (e) => {
+      const files = Array.from(e.target.files || []);
+      if (files.length === 0) return;
+      let evListObj = null;
+      const graphs = [];
+      for (const f of files) {
+        try {
+          const data = JSON.parse(await f.text());
+          if (Array.isArray(data.events)) evListObj = data;
+          else if (Array.isArray(data.tier) && data.startTime && data.endTime) graphs.push({ name: f.name.replace(/\.json$/i, ""), data });
+        } catch (_) {}
+      }
+      if (evListObj) {
+        state.dataMode = "local";
+        state.events = evListObj.events;
+        state.eligibleItems = buildEligibleItems(state.events);
+        renderEventSelector();
+        updatePollingStatus();
+      }
+      for (const gEnt of graphs) {
+        const g = gEnt.data;
+        const r = g.rank || state.rank;
+        const matched = state.eligibleItems.find(it => Math.abs(it.startTime - g.startTime) < 120000 && Math.abs(it.endTime - g.endTime) < 120000);
+        if (matched) {
+          state.graphCache.set(`${matched.eventId}::${matched.chapterId}::${r}`, g);
+        }
+      }
+      const avail = state.eligibleItems.find(it => state.graphCache.has(`${it.eventId}::${it.chapterId}::${state.rank}`));
+      if (avail) {
+        state.selectedKey = avail.key;
+        document.getElementById("eventSelect").value = avail.key;
+        const tg = state.graphCache.get(`${avail.eventId}::${avail.chapterId}::${state.rank}`);
+        const refs = state.eligibleItems
+          .filter(x => x.category === avail.category && x.key !== avail.key && !x.live)
+          .map(x => ({ item: x, graph: state.graphCache.get(`${x.eventId}::${x.chapterId}::${state.rank}`) }))
+          .filter(p => p.graph);
+        renderAll(computePrediction(avail, tg, refs));
+      }
+    });
+
+    document.getElementById("eventSelect").addEventListener("change", (e) => {
+      state.selectedKey = e.target.value;
+      loadSelectedAndPredict(false);
+    });
+
+    document.getElementById("rankSelect").addEventListener("change", (e) => {
+      state.rank = Number(e.target.value);
+      loadSelectedAndPredict(true);
+    });
+
+    document.getElementById("refreshBtn").addEventListener("click", () => runFullLoad(true));
+
+    startCountdownLoop();
+    runFullLoad(true);
+  </script>
+</body>
+</html>

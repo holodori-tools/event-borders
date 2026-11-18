@@ -1,0 +1,37 @@
+name: Fetch Event Borders
+
+on:
+  schedule:
+    # 10分おきに実行（GitHub Actions仕様上、混雑時は数分前後する場合があります）
+    - cron: "*/10 * * * *"
+  workflow_dispatch: # GitHub画面から手動で今すぐ実行も可能
+
+permissions:
+  contents: write
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Fetch event list and historical graphs
+        run: node scripts/fetch_data.mjs
+
+      - name: Commit and push updated data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/
+          if git diff --staged --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "chore: update border data [skip ci]"
+            git push
+          fi

@@ -1,18 +1,14 @@
 import fs from "node:fs";
 import path from "node:path";
+import puppeteer from "puppeteer-extra";
+import StealthPlugin from "puppeteer-extra-plugin-stealth";
+
+puppeteer.use(StealthPlugin());
 
 const API_BASE = "https://api.holodori.best/api/events";
 const DATA_DIR = path.resolve("data");
 const GRAPHS_DIR = path.join(DATA_DIR, "graphs");
 const RANKS = [100, 500, 1000, 5000, 10000, 50000, 100000];
-
-const HEADERS = {
-  "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-  "Accept": "application/json, text/plain, */*",
-  "Accept-Language": "ja,en-US;q=0.9,en;q=0.8",
-  "Origin": "https://holodori.best",
-  "Referer": "https://holodori.best/"
-};
 
 fs.mkdirSync(GRAPHS_DIR, { recursive: true });
 
@@ -26,89 +22,127 @@ function isTargetEvent(ev) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function fetchJson(url) {
-  const res = await fetch(url, { headers: HEADERS });
-  if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
-  const text = await res.text();
-  if (text.trim().startsWith("<")) {
-    throw new Error(`Blocked by HTML challenge for ${url}`);
+// ブラウザページ内のコンテキストからAPIを取得（CloudflareのCookie・TLS指紋をそのまま利用）
+async function fetchJsonInBrowser(page, url) {
+  const result = await page.evaluate(async (targetUrl) => {
+    try {
+      const res = await fetch(targetUrl, {
+        headers: { "Accept": "application/json, text/plain, */*" }
+      });
+      const text = await res.text();
+      return { ok: res.ok, status: res.status, text };
+    } catch (e) {
+      return { ok: false, status: 0, text: String(e) };
+    }
+  }, url);
+
+  if (!result.ok) {
+    throw new Error(`HTTP ${result.status} for ${url}`);
   }
-  return JSON.parse(text);
+  if (result.text.trim().startsWith("<")) {
+    throw new Error(`HTML challenge returned for ${url}`);
+  }
+  return JSON.parse(result.text);
 }
 
 async function main() {
-  console.log("Fetching event list...");
-  const listData = await fetchJson(`${API_BASE}/list?region=jp&language=jpn`);
-  const events = listData.events || [];
-  fs.writeFileSync(path.join(DATA_DIR, "events.json"), JSON.stringify(listData));
+  console.log("Launching stealth browser...");
+  const browser = await puppeteer.launch({
+    headless: "new",
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage"
+    ]
+  });
 
-  const now = Date.now();
-  const targetEvents = events.filter(isTargetEvent);
-  console.log(`Found ${targetEvents.length} target events (spotlight / point).`);
+  try {
+    const page = await browser.newPage();
+    await page.setViewport({ width: 1280, height: 800 });
 
-  const manifest = {
-    updatedAt: now,
-    ranks: RANKS,
-    items: []
-  };
+    // 先にフロントページを開き、Cloudflareのセキュリティ検証とCookieを通過させる
+    console.log("Warming up session on holodori.best...");
+    await page.goto("https://holodori.best/", {
+      waitUntil: "networkidle2",
+      timeout: 60000
+    });
+    await sleep(4000);
 
-  for (const ev of targetEvents) {
-    const chapters = Array.isArray(ev.chapters) && ev.chapters.length > 0
-      ? ev.chapters
-      : Object.keys(ev.chapterMeta || {});
+    console.log("Fetching event list...");
+    const listData = await fetchJsonInBrowser(page, `${API_BASE}/list?region=jp&language=jpn`);
+    const events = listData.events || [];
+    fs.writeFileSync(path.join(DATA_DIR, "events.json"), JSON.stringify(listData));
 
-    for (const cid of chapters) {
-      const cm = (ev.chapterMeta && ev.chapterMeta[cid]) || {};
-      const st = cm.startTime || ev.startTime;
-      const et = cm.endTime || ev.endTime;
-      if (!st || !et) continue;
+    const now = Date.now();
+    const targetEvents = events.filter(isTargetEvent);
+    console.log(`Found ${targetEvents.length} target events (spotlight / point).`);
 
-      const isChapterLive = Boolean(ev.live && (ev.activeChapterId === cid || (now >= st && now <= et)));
-      const isStarted = st <= now || !ev.live;
-      if (!isStarted && !isChapterLive) continue;
+    const manifest = {
+      updatedAt: now,
+      ranks: RANKS,
+      items: []
+    };
 
-      const safeId = `${ev.eventId}__${cid}`.replace(/[^a-zA-Z0-9_-]/g, "_");
-      manifest.items.push({
-        eventId: ev.eventId,
-        chapterId: cid,
-        safeId,
-        live: isChapterLive
-      });
+    for (const ev of targetEvents) {
+      const chapters = Array.isArray(ev.chapters) && ev.chapters.length > 0
+        ? ev.chapters
+        : Object.keys(ev.chapterMeta || {});
 
-      for (const rank of RANKS) {
-        const fileName = `${safeId}__r${rank}.json`;
-        const filePath = path.join(GRAPHS_DIR, fileName);
+      for (const cid of chapters) {
+        const cm = (ev.chapterMeta && ev.chapterMeta[cid]) || {};
+        const st = cm.startTime || ev.startTime;
+        const et = cm.endTime || ev.endTime;
+        if (!st || !et) continue;
 
-        // 終了済みチャプターで既に有効なキャッシュがあれば再取得をスキップ
-        if (!isChapterLive && fs.existsSync(filePath)) {
-          try {
-            const existing = JSON.parse(fs.readFileSync(filePath, "utf-8"));
-            if (Array.isArray(existing.tier) && existing.tier.length >= 20) {
-              const lastTs = existing.tier[existing.tier.length - 1][0];
-              if (lastTs >= et - 15 * 60 * 1000) {
-                continue;
+        const isChapterLive = Boolean(ev.live && (ev.activeChapterId === cid || (now >= st && now <= et)));
+        const isStarted = st <= now || !ev.live;
+        if (!isStarted && !isChapterLive) continue;
+
+        const safeId = `${ev.eventId}__${cid}`.replace(/[^a-zA-Z0-9_-]/g, "_");
+        manifest.items.push({
+          eventId: ev.eventId,
+          chapterId: cid,
+          safeId,
+          live: isChapterLive
+        });
+
+        for (const rank of RANKS) {
+          const fileName = `${safeId}__r${rank}.json`;
+          const filePath = path.join(GRAPHS_DIR, fileName);
+
+          // 完了済みチャプターは既存キャッシュを再利用
+          if (!isChapterLive && fs.existsSync(filePath)) {
+            try {
+              const existing = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+              if (Array.isArray(existing.tier) && existing.tier.length >= 20) {
+                const lastTs = existing.tier[existing.tier.length - 1][0];
+                if (lastTs >= et - 15 * 60 * 1000) {
+                  continue;
+                }
               }
-            }
-          } catch (_) {}
-        }
-
-        const url = `${API_BASE}/graph?region=jp&rank=${rank}&border=true&music=false&event_id=${encodeURIComponent(ev.eventId)}&chapter_id=${encodeURIComponent(cid)}`;
-        try {
-          const graph = await fetchJson(url);
-          if (graph && Array.isArray(graph.tier) && graph.tier.length > 0) {
-            fs.writeFileSync(filePath, JSON.stringify(graph));
-            console.log(`Saved ${fileName} (${graph.tier.length} pts)`);
+            } catch (_) {}
           }
-        } catch (err) {
-          console.warn(`Skipped ${fileName}: ${err.message}`);
+
+          const url = `${API_BASE}/graph?region=jp&rank=${rank}&border=true&music=false&event_id=${encodeURIComponent(ev.eventId)}&chapter_id=${encodeURIComponent(cid)}`;
+          try {
+            const graph = await fetchJsonInBrowser(page, url);
+            if (graph && Array.isArray(graph.tier) && graph.tier.length > 0) {
+              fs.writeFileSync(filePath, JSON.stringify(graph));
+              console.log(`Saved ${fileName} (${graph.tier.length} pts)`);
+            }
+          } catch (err) {
+            console.warn(`Skipped ${fileName}: ${err.message}`);
+          }
+          await sleep(400);
         }
-        await sleep(350); // API負荷軽減
       }
     }
-  }
 
-  fs.writeFileSync(path.join(DATA_DIR, "manifest.json"), JSON.stringify(manifest));
-  console.log("Done.");
+    fs.writeFileSync(path.join(DATA_DIR, "manifest.json"), JSON.stringify(manifest));
+    console.log("Done.");
+  } finally {
+    await browser.close();
+  }
 }
 
 main().catch((err) => {

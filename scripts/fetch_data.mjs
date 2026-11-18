@@ -5,7 +5,7 @@ import StealthPlugin from "puppeteer-extra-plugin-stealth";
 
 puppeteer.use(StealthPlugin());
 
-const API_BASE = "https://api.holodori.best/api/events";
+const API_BASE = process.env.API_PROXY_BASE || "https://api.holodori.best/api/events";
 const DATA_DIR = path.resolve("data");
 const GRAPHS_DIR = path.join(DATA_DIR, "graphs");
 const RANKS = [100, 500, 1000, 5000, 10000, 50000, 100000];
@@ -22,31 +22,35 @@ function isTargetEvent(ev) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// ブラウザページ内のコンテキストからAPIを取得（CloudflareのCookie・TLS指紋をそのまま利用）
-async function fetchJsonInBrowser(page, url) {
-  const result = await page.evaluate(async (targetUrl) => {
-    try {
-      const res = await fetch(targetUrl, {
-        headers: { "Accept": "application/json, text/plain, */*" }
-      });
-      const text = await res.text();
-      return { ok: res.ok, status: res.status, text };
-    } catch (e) {
-      return { ok: false, status: 0, text: String(e) };
-    }
-  }, url);
+// CORSの制約を受けない「ブラウザの直接遷移(page.goto)」でJSONを取得
+async function fetchJsonViaNavigation(page, url) {
+  const response = await page.goto(url, {
+    waitUntil: "domcontentloaded",
+    timeout: 45000
+  });
 
-  if (!result.ok) {
-    throw new Error(`HTTP ${result.status} for ${url}`);
+  if (!response) {
+    throw new Error(`No response for ${url}`);
   }
-  if (result.text.trim().startsWith("<")) {
-    throw new Error(`HTML challenge returned for ${url}`);
+
+  let status = response.status();
+  let text = await response.text();
+
+  // Cloudflare JSチャレンジが挟まった場合は完了まで最大10秒待機して再読込
+  if (status === 403 || status === 503 || text.trim().startsWith("<")) {
+    await sleep(6000);
+    text = await page.evaluate(() => document.body?.innerText || "");
   }
-  return JSON.parse(result.text);
+
+  const trimmed = text.trim();
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
+    throw new Error(`HTTP ${status} (Non-JSON response) for ${url}`);
+  }
+  return JSON.parse(trimmed);
 }
 
 async function main() {
-  console.log("Launching stealth browser...");
+  console.log(`Target API Base: ${API_BASE}`);
   const browser = await puppeteer.launch({
     headless: "new",
     args: [
@@ -60,22 +64,14 @@ async function main() {
     const page = await browser.newPage();
     await page.setViewport({ width: 1280, height: 800 });
 
-    // 先にフロントページを開き、Cloudflareのセキュリティ検証とCookieを通過させる
-    console.log("Warming up session on holodori.best...");
-    await page.goto("https://holodori.best/", {
-      waitUntil: "networkidle2",
-      timeout: 60000
-    });
-    await sleep(4000);
-
     console.log("Fetching event list...");
-    const listData = await fetchJsonInBrowser(page, `${API_BASE}/list?region=jp&language=jpn`);
+    const listData = await fetchJsonViaNavigation(page, `${API_BASE}/list?region=jp&language=jpn`);
     const events = listData.events || [];
     fs.writeFileSync(path.join(DATA_DIR, "events.json"), JSON.stringify(listData));
 
     const now = Date.now();
     const targetEvents = events.filter(isTargetEvent);
-    console.log(`Found ${targetEvents.length} target events (spotlight / point).`);
+    console.log(`Found ${targetEvents.length} target events.`);
 
     const manifest = {
       updatedAt: now,
@@ -110,7 +106,6 @@ async function main() {
           const fileName = `${safeId}__r${rank}.json`;
           const filePath = path.join(GRAPHS_DIR, fileName);
 
-          // 完了済みチャプターは既存キャッシュを再利用
           if (!isChapterLive && fs.existsSync(filePath)) {
             try {
               const existing = JSON.parse(fs.readFileSync(filePath, "utf-8"));
@@ -125,7 +120,7 @@ async function main() {
 
           const url = `${API_BASE}/graph?region=jp&rank=${rank}&border=true&music=false&event_id=${encodeURIComponent(ev.eventId)}&chapter_id=${encodeURIComponent(cid)}`;
           try {
-            const graph = await fetchJsonInBrowser(page, url);
+            const graph = await fetchJsonViaNavigation(page, url);
             if (graph && Array.isArray(graph.tier) && graph.tier.length > 0) {
               fs.writeFileSync(filePath, JSON.stringify(graph));
               console.log(`Saved ${fileName} (${graph.tier.length} pts)`);

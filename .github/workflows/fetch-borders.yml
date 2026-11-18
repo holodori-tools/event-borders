@@ -2,9 +2,8 @@ name: Fetch Event Borders
 
 on:
   schedule:
-    # 10分おきに実行（GitHub Actions仕様上、混雑時は数分前後する場合があります）
     - cron: "*/10 * * * *"
-  workflow_dispatch: # GitHub画面から手動で今すぐ実行も可能
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -20,6 +19,9 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
+
+      - name: Install Puppeteer Stealth
+        run: npm install --no-save puppeteer puppeteer-extra puppeteer-extra-plugin-stealth
 
       - name: Fetch event list and historical graphs
         run: node scripts/fetch_data.mjs

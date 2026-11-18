@@ -77,7 +77,7 @@
       gap: 8px;
     }
 
-    select, button, .file-btn {
+    select, button, input[type="text"], .file-btn {
       height: 32px;
       padding: 0 10px;
       font-size: 13px;
@@ -86,12 +86,10 @@
       background: var(--surface);
       border: 1px solid var(--border-strong);
       border-radius: 4px;
-      cursor: pointer;
     }
 
-    select:hover, button:hover, .file-btn:hover {
-      background: #f1f3f6;
-    }
+    select, button, .file-btn { cursor: pointer; }
+    select:hover, button:hover, .file-btn:hover { background: #f1f3f6; }
 
     button.primary {
       background: var(--text);
@@ -100,9 +98,7 @@
       font-weight: 600;
     }
 
-    button.primary:hover {
-      background: #2d333d;
-    }
+    button.primary:hover { background: #2d333d; }
 
     button.accent-btn {
       background: var(--accent);
@@ -111,18 +107,14 @@
       font-weight: 600;
     }
 
-    button.accent-btn:hover {
-      background: #1e40af;
-    }
+    button.accent-btn:hover { background: #1e40af; }
 
     .file-btn {
       display: inline-flex;
       align-items: center;
     }
 
-    input[type="file"] {
-      display: none;
-    }
+    input[type="file"] { display: none; }
 
     .status-bar {
       background: var(--surface);
@@ -187,6 +179,35 @@
       gap: 16px;
     }
 
+    .worker-bar {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 10px 16px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      font-size: 12px;
+    }
+
+    .worker-input-group {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      flex: 1;
+    }
+
+    .worker-input-group input[type="text"] {
+      min-width: 300px;
+      flex: 1;
+      max-width: 480px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+    }
+
     .kpi-grid {
       display: grid;
       grid-template-columns: repeat(4, 1fr);
@@ -200,9 +221,7 @@
       border-right: 1px solid var(--border);
     }
 
-    .kpi-cell:last-child {
-      border-right: none;
-    }
+    .kpi-cell:last-child { border-right: none; }
 
     .kpi-label {
       font-size: 12px;
@@ -217,9 +236,7 @@
       color: var(--text);
     }
 
-    .kpi-value.forecast {
-      color: var(--forecast);
-    }
+    .kpi-value.forecast { color: var(--forecast); }
 
     .kpi-sub {
       margin-top: 4px;
@@ -313,7 +330,6 @@
       min-width: 210px;
     }
 
-    /* Share Card Generator Section */
     .card-gen-body {
       padding: 16px;
       display: grid;
@@ -384,9 +400,7 @@
       gap: 16px;
     }
 
-    .table-wrap {
-      overflow-x: auto;
-    }
+    .table-wrap { overflow-x: auto; }
 
     table {
       width: 100%;
@@ -413,9 +427,7 @@
       font-size: 12px;
     }
 
-    tr:last-child td {
-      border-bottom: none;
-    }
+    tr:last-child td { border-bottom: none; }
 
     tr.highlight td {
       background: var(--forecast-soft);
@@ -443,7 +455,7 @@
     <div class="header-inner">
       <div class="title-group">
         <h1>イベントボーダー推移・着地予測モニター</h1>
-        <div class="title-sub" id="eventSubtitle">データを読み込んでいます...</div>
+        <div class="title-sub" id="eventSubtitle">イベント一覧と過去データを自動取得しています...</div>
       </div>
       <div class="controls">
         <select id="eventSelect" title="対象イベント・チャプター選択"></select>
@@ -470,13 +482,23 @@
     <div class="status-inner">
       <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
         <span class="badge paused" id="pollingBadge"><span class="dot"></span><span id="pollingText">初期化中</span></span>
-        <span id="sourceModeText" class="num">データソース: 検出中</span>
+        <span>自動更新対象: スポットライト / ポイントイベント開催中のみ（10分間隔）</span>
       </div>
       <div class="num" id="timerText">次回自動更新: --:--</div>
     </div>
   </div>
 
   <main>
+    <!-- Cloudflare Worker 中継設定バー -->
+    <section class="worker-bar">
+      <div class="worker-input-group">
+        <span style="font-weight:700;">API中継エンドポイント (Cloudflare Worker URL):</span>
+        <input type="text" id="workerUrlInput" placeholder="https://holodori-proxy.xxxx.workers.dev" />
+        <button class="primary" id="saveWorkerBtn">保存して再取得</button>
+      </div>
+      <div id="workerStatusText" class="num" style="color:var(--text-muted);">未設定時は直接接続を試行</div>
+    </section>
+
     <!-- KPI Strip -->
     <section class="kpi-grid">
       <div class="kpi-cell">
@@ -607,15 +629,16 @@
   </main>
 
   <script>
-    const STATIC_DATA_BASE = "./data";
-    const DIRECT_API_BASE = "https://api.holodori.best/api/events";
+    // ここに作成した Cloudflare Worker の URL を書いておくとアクセス直後から自動接続します
+    const DEFAULT_WORKER_URL = "https://holodori-border.holodori-tool.workers.dev/";
+    const STORAGE_KEY_WORKER = "holodori_worker_url_v1";
+
     const REFRESH_INTERVAL_MS = 10 * 60 * 1000; // 10分おき
     const HIST_COLORS = ["#64748b", "#0d9488", "#7c3aed", "#db2777", "#4f46e5", "#059669"];
     const DAYS_JP = ["日", "月", "火", "水", "木", "金", "土"];
 
     const state = {
-      dataMode: "static", // "static" (GitHub Pages ./data) | "direct" | "local"
-      manifest: null,
+      workerOrigin: localStorage.getItem(STORAGE_KEY_WORKER) || DEFAULT_WORKER_URL,
       events: [],
       eligibleItems: [],
       selectedKey: null,
@@ -629,7 +652,11 @@
       countdownHandle: null
     };
 
-    // スポットライト(type:2) または ポイントラリー/ポイントチャレンジ(type:1 かつ 非楽曲スコア)のみ対象
+    function getApiBase() {
+      const clean = (state.workerOrigin || "").trim().replace(/\/+$/, "");
+      return clean ? `${clean}/api/events` : "https://api.holodori.best/api/events";
+    }
+
     function getEventCategory(ev) {
       if (!ev || !ev.hasData) return null;
       const name = ev.name || "";
@@ -661,8 +688,12 @@
       return `${sStr}〜${eStr}`;
     }
 
-    function makeSafeId(eventId, chapterId) {
-      return `${eventId}__${chapterId}`.replace(/[^a-zA-Z0-9_-]/g, "_");
+    async function apiGetJson(pathAndQuery) {
+      const res = await fetch(`${getApiBase()}${pathAndQuery}`, { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const text = await res.text();
+      if (text.trim().startsWith("<")) throw new Error("Non-JSON (Blocked)");
+      return JSON.parse(text);
     }
 
     function buildEligibleItems(events) {
@@ -692,7 +723,6 @@
             key: `${ev.eventId}::${cid}`,
             eventId: ev.eventId,
             chapterId: cid,
-            safeId: makeSafeId(ev.eventId, cid),
             category: cat,
             catLabel,
             label: `${catLabel}${chName} (${formatJST(st, true)}〜, ${Math.round(durH)}h)${isChapterLive ? " [開催中]" : ""}`,
@@ -769,65 +799,6 @@
         const s = String(Math.floor((rem % 60000) / 1000)).padStart(2, "0");
         document.getElementById("timerText").textContent = `次回自動更新: ${m}:${s}`;
       }, 1000);
-    }
-
-    // 1. GitHub Pages 静的データ(./data/) -> 2. 直接API の順で自動取得
-    async function loadEventListAuto() {
-      const bust = `?t=${Math.floor(Date.now() / 60000)}`;
-      try {
-        const res = await fetch(`${STATIC_DATA_BASE}/events.json${bust}`, { cache: "no-store" });
-        if (!res.ok) throw new Error("No static events.json");
-        const listData = await res.json();
-        state.dataMode = "static";
-        try {
-          const mRes = await fetch(`${STATIC_DATA_BASE}/manifest.json${bust}`, { cache: "no-store" });
-          if (mRes.ok) state.manifest = await mRes.json();
-        } catch (_) {}
-        const updStr = state.manifest?.updatedAt ? ` (最終収集: ${formatJST(state.manifest.updatedAt)})` : "";
-        document.getElementById("sourceModeText").textContent = `データソース: GitHub Pages 静的キャッシュ${updStr}`;
-        state.events = listData.events || [];
-        state.eligibleItems = buildEligibleItems(state.events);
-        renderEventSelector();
-        return;
-      } catch (_) {}
-
-      // Fallback to direct API (CORS拡張機能やプロキシ環境用)
-      const res = await fetch(`${DIRECT_API_BASE}/list?region=jp&language=jpn`, { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const listData = await res.json();
-      state.dataMode = "direct";
-      document.getElementById("sourceModeText").textContent = "データソース: API直接接続";
-      state.events = listData.events || [];
-      state.eligibleItems = buildEligibleItems(state.events);
-      renderEventSelector();
-    }
-
-    async function loadGraphAuto(item, rank, force = false) {
-      const ck = `${item.eventId}::${item.chapterId}::${rank}`;
-      if (!force && state.graphCache.has(ck)) {
-        return state.graphCache.get(ck);
-      }
-      const bust = item.live ? `?t=${Math.floor(Date.now() / 60000)}` : "";
-      if (state.dataMode === "static") {
-        const url = `${STATIC_DATA_BASE}/graphs/${item.safeId}__r${rank}.json${bust}`;
-        const res = await fetch(url, { cache: item.live ? "no-store" : "default" });
-        if (res.ok) {
-          const g = await res.json();
-          if (g && Array.isArray(g.tier) && g.tier.length > 0) {
-            state.graphCache.set(ck, g);
-            return g;
-          }
-        }
-      }
-      // Fallback to direct API
-      const url = `${DIRECT_API_BASE}/graph?region=jp&rank=${rank}&border=true&music=false&event_id=${encodeURIComponent(item.eventId)}&chapter_id=${encodeURIComponent(item.chapterId)}`;
-      const res = await fetch(url, { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const g = await res.json();
-      if (g && Array.isArray(g.tier) && g.tier.length > 0) {
-        state.graphCache.set(ck, g);
-      }
-      return g;
     }
 
     function interpScoreAtProgress(graph, prog) {
@@ -1276,9 +1247,7 @@
       }
     }
 
-    // =========================================================================
     // 順位ティア別テーマ定義（~T1000:虹色, T5000:紫輝く, T10000:プラチナ, T50000:ゴールド, T100000:シルバー, それ以下:ブロンズ）
-    // =========================================================================
     function getTierTheme(rank) {
       const override = document.getElementById("themeOverrideSelect")?.value || "auto";
       let key = override;
@@ -1293,7 +1262,6 @@
 
       const themes = {
         rainbow: {
-          key: "rainbow",
           label: "虹色（RAINBOW PRISM / 〜T1000）",
           bgStops: ["#0c0a1d", "#181236", "#0b192c"],
           borderStops: ["#ff4d6d", "#ffb703", "#06d6a0", "#3a86ff", "#c77dff", "#ff4d6d"],
@@ -1307,7 +1275,6 @@
           dotCss: "linear-gradient(135deg, #ff4d6d, #ffb703, #06d6a0, #3a86ff, #c77dff)"
         },
         purple: {
-          key: "purple",
           label: "紫・輝く（RADIANT VIOLET / T5000）",
           bgStops: ["#120724", "#240e47", "#140829"],
           borderStops: ["#a855f7", "#f0abfc", "#7e22ce", "#e879f9"],
@@ -1321,7 +1288,6 @@
           dotCss: "linear-gradient(135deg, #7e22ce, #e879f9)"
         },
         platinum: {
-          key: "platinum",
           label: "プラチナ（PLATINUM / T10000）",
           bgStops: ["#101822", "#1e2c3d", "#131c28"],
           borderStops: ["#e0f2fe", "#7dd3fc", "#f8fafc", "#38bdf8"],
@@ -1335,7 +1301,6 @@
           dotCss: "linear-gradient(135deg, #bae6fd, #f8fafc)"
         },
         gold: {
-          key: "gold",
           label: "ゴールド（ROYAL GOLD / T50000）",
           bgStops: ["#1c1507", "#33260c", "#1a1306"],
           borderStops: ["#fde047", "#f59e0b", "#fef08a", "#d97706"],
@@ -1349,7 +1314,6 @@
           dotCss: "linear-gradient(135deg, #f59e0b, #fef08a)"
         },
         silver: {
-          key: "silver",
           label: "シルバー（METALLIC SILVER / T100000）",
           bgStops: ["#14171c", "#262b34", "#161920"],
           borderStops: ["#e2e8f0", "#94a3b8", "#f1f5f9", "#64748b"],
@@ -1363,7 +1327,6 @@
           dotCss: "linear-gradient(135deg, #94a3b8, #f1f5f9)"
         },
         bronze: {
-          key: "bronze",
           label: "ブロンズ（COPPER BRONZE / T100000超）",
           bgStops: ["#1a100b", "#2e1c13", "#180e0a"],
           borderStops: ["#fdba74", "#c2410c", "#fed7aa", "#9a3412"],
@@ -1404,7 +1367,6 @@
 
       ctx.clearRect(0, 0, W, H);
 
-      // 1. 背景グラデーション
       const bgGrad = ctx.createLinearGradient(0, 0, W, H);
       bgGrad.addColorStop(0, theme.bgStops[0]);
       bgGrad.addColorStop(0.5, theme.bgStops[1]);
@@ -1412,7 +1374,6 @@
       ctx.fillStyle = bgGrad;
       ctx.fillRect(0, 0, W, H);
 
-      // 背景装飾グリッド＆オーラ光彩
       const radial = ctx.createRadialGradient(W * 0.78, H * 0.22, 20, W * 0.78, H * 0.22, 460);
       radial.addColorStop(0, theme.glowColor);
       radial.addColorStop(1, "rgba(0,0,0,0)");
@@ -1430,7 +1391,6 @@
         ctx.fillRect(0, 0, W, H);
       }
 
-      // 輝きパーティクル演出（虹色・紫テーマ）
       if (theme.sparkle) {
         const stars = [
           [90, 95, 3.2], [240, 62, 2.0], [1080, 88, 3.8], [1120, 210, 2.4],
@@ -1449,7 +1409,6 @@
         }
       }
 
-      // 2. 外周メタリック／プリズムフレーム
       const borderGrad = ctx.createLinearGradient(0, 0, W, H);
       theme.borderStops.forEach((c, idx) => {
         borderGrad.addColorStop(idx / Math.max(1, theme.borderStops.length - 1), c);
@@ -1465,7 +1424,6 @@
       ctx.stroke();
       ctx.restore();
 
-      // 3. ヘッダー情報（イベント名・チャプター・順位バッジ）
       ctx.fillStyle = "rgba(255, 255, 255, 0.68)";
       ctx.font = "600 18px sans-serif";
       ctx.fillText(`${pred.targetItem.catLabel}  ｜  開催: ${formatJST(pred.targetItem.startTime)} 〜 ${formatJST(pred.targetItem.endTime)}`, 48, 66);
@@ -1480,7 +1438,6 @@
       ctx.fillText(`${pred.targetItem.shortLabel}`, 48, 112);
       ctx.restore();
 
-      // 順位バッジ（右上）
       const rankBadgeW = 240;
       const rankBadgeH = 54;
       const rankBadgeX = W - 48 - rankBadgeW;
@@ -1498,7 +1455,6 @@
       ctx.fillText(`T${pred.rank.toLocaleString()} ボーダー`, rankBadgeX + rankBadgeW / 2, rankBadgeY + 36);
       ctx.restore();
 
-      // 4. メイン予測数値カード（左カラム）
       const leftX = 48;
       const leftY = 142;
       const leftW = 430;
@@ -1512,7 +1468,6 @@
       ctx.stroke();
       ctx.restore();
 
-      // 予測ボーダー本命＋±誤差
       ctx.fillStyle = "rgba(255, 255, 255, 0.72)";
       ctx.font = "700 17px sans-serif";
       ctx.fillText(pred.isFinished ? "最終確定ボーダー" : "最終着地予測ボーダー（本命）", leftX + 26, leftY + 42);
@@ -1536,7 +1491,6 @@
       ctx.fillText(`${formatNumber(pred.centralFinal)} pt`, leftX + 26, leftY + 98);
       ctx.restore();
 
-      // ±誤差表記＆下限〜上限レンジ
       if (!pred.isFinished) {
         ctx.fillStyle = theme.accent;
         ctx.font = "700 22px monospace";
@@ -1551,7 +1505,6 @@
         ctx.fillText("イベント終了・確定値", leftX + 26, leftY + 138);
       }
 
-      // 区切り線
       ctx.strokeStyle = "rgba(255, 255, 255, 0.14)";
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -1559,7 +1512,6 @@
       ctx.lineTo(leftX + leftW - 24, leftY + 190);
       ctx.stroke();
 
-      // サブ指標リスト
       const subRows = [
         ["現在スコア", `${formatNumber(pred.currentScore)} pt`],
         ["経過 / 進捗", `${pred.elapsedH.toFixed(1)}h / ${pred.totalH.toFixed(0)}h (${(pred.pCur * 100).toFixed(1)}%)`],
@@ -1581,7 +1533,6 @@
         ctx.textAlign = "left";
       });
 
-      // 5. グラフエリア（右カラム）
       const rightX = 502;
       const rightY = 142;
       const rightW = W - rightX - 48;
@@ -1602,7 +1553,6 @@
       const plotW = rightW - gPadL - gPadR;
       const plotH = rightH - gPadT - gPadB;
 
-      // グラフヘッダー凡例
       ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
       ctx.font = "700 15px sans-serif";
       ctx.fillText("推移実績 & 着地予測レンジ", rightX + 24, rightY + 30);
@@ -1614,7 +1564,6 @@
       const xOf = (p) => plotX + Math.max(0, Math.min(1, p)) * plotW;
       const yOf = (v) => plotY + plotH - (Math.max(0, v) / maxY) * plotH;
 
-      // Y軸グリッド
       ctx.font = "600 13px monospace";
       ctx.textAlign = "right";
       for (let i = 0; i <= 5; i++) {
@@ -1632,7 +1581,6 @@
         ctx.fillText(lbl, plotX - 10, gy + 4);
       }
 
-      // X軸グリッド
       ctx.textAlign = "center";
       const stepH = pred.totalH <= 48 ? 6 : 24;
       for (let h = 0; h <= pred.totalH; h += stepH) {
@@ -1648,7 +1596,6 @@
       }
       ctx.textAlign = "left";
 
-      // 過去上位2件の薄い参考線
       pred.refModels.slice(0, 2).forEach((m) => {
         const g = m.graph;
         const dur = g.endTime - g.startTime;
@@ -1668,7 +1615,6 @@
         ctx.restore();
       });
 
-      // 予測誤差バンド＆予測曲線
       if (!pred.isFinished && pred.forecastSeries.length > 1) {
         ctx.save();
         ctx.fillStyle = theme.bandFill;
@@ -1704,7 +1650,6 @@
         ctx.restore();
       }
 
-      // 実績線
       const tPts = pred.targetGraph.tier;
       const tDur = pred.targetGraph.endTime - pred.targetGraph.startTime;
       ctx.save();
@@ -1738,14 +1683,12 @@
       ctx.lineTo(lx, ly);
       ctx.stroke();
 
-      // 現在地点マーカー
       ctx.fillStyle = "#ffffff";
       ctx.beginPath();
       ctx.arc(lx, ly, 6, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
 
-      // 着地予測ポイントラベル（グラフ右端）
       const endY = yOf(pred.centralFinal);
       ctx.save();
       ctx.fillStyle = theme.forecast;
@@ -1754,7 +1697,6 @@
       ctx.fill();
       ctx.restore();
 
-      // フッタークレジット
       ctx.fillStyle = "rgba(255, 255, 255, 0.45)";
       ctx.font = "600 13px monospace";
       ctx.textAlign = "right";
@@ -1762,12 +1704,27 @@
       ctx.textAlign = "left";
     }
 
+    async function fetchGraphCached(item, rank, force = false) {
+      const ck = `${item.eventId}::${item.chapterId}::${rank}`;
+      if (!force && state.graphCache.has(ck)) {
+        return state.graphCache.get(ck);
+      }
+      const g = await apiGetJson(
+        `/graph?region=jp&rank=${rank}&border=true&music=false&event_id=${encodeURIComponent(item.eventId)}&chapter_id=${encodeURIComponent(item.chapterId)}`
+      );
+      if (g && Array.isArray(g.tier) && g.tier.length > 0) {
+        state.graphCache.set(ck, g);
+      }
+      return g;
+    }
+
     async function loadSelectedAndPredict(forceRefresh = false) {
       const targetItem = state.eligibleItems.find(x => x.key === state.selectedKey);
       if (!targetItem) return;
 
-      const targetGraph = await loadGraphAuto(targetItem, state.rank, forceRefresh);
+      const targetGraph = await fetchGraphCached(targetItem, state.rank, forceRefresh);
 
+      // 過去完了イベント・チャプターを最大10件自動取得して比較母集団を構築
       const sameCategoryRefs = state.eligibleItems
         .filter(x => x.category === targetItem.category && x.key !== targetItem.key && !x.live)
         .slice(0, 10);
@@ -1775,7 +1732,7 @@
       const refPairs = [];
       for (const refItem of sameCategoryRefs) {
         try {
-          const g = await loadGraphAuto(refItem, state.rank, false);
+          const g = await fetchGraphCached(refItem, state.rank, false);
           if (g && Array.isArray(g.tier) && g.tier.length > 0) {
             refPairs.push({ item: refItem, graph: g });
           }
@@ -1788,18 +1745,33 @@
 
     async function runFullLoad(forceRefresh = false) {
       try {
-        await loadEventListAuto();
+        const listData = await apiGetJson("/list?region=jp&language=jpn");
+        state.events = listData.events || [];
+        state.eligibleItems = buildEligibleItems(state.events);
+        renderEventSelector();
         updatePollingStatus();
+        document.getElementById("workerStatusText").textContent =
+          state.workerOrigin ? `接続先: ${state.workerOrigin}` : "接続先: Direct API";
         await loadSelectedAndPredict(forceRefresh);
       } catch (err) {
         console.error(err);
         const badge = document.getElementById("pollingBadge");
         badge.className = "badge error";
-        document.getElementById("pollingText").textContent = "データ未取得（GitHub Actions未実行またはローカルJSON読込待ち）";
+        document.getElementById("pollingText").textContent = `取得エラー: ${err.message}`;
         document.getElementById("eventSubtitle").textContent =
-          "GitHub Actions の「Fetch Event Borders」を実行して data/ を生成するか、右上の「JSON読込」からファイルを選択してください。";
+          "上の入力欄に Cloudflare Worker の URL を保存するか、右上の「JSON読込」からファイルを選択してください。";
       }
     }
+
+    // Worker URL 保存ボタン
+    document.getElementById("workerUrlInput").value = state.workerOrigin;
+    document.getElementById("saveWorkerBtn").addEventListener("click", () => {
+      const val = document.getElementById("workerUrlInput").value.trim().replace(/\/+$/, "");
+      state.workerOrigin = val;
+      localStorage.setItem(STORAGE_KEY_WORKER, val);
+      state.graphCache.clear();
+      runFullLoad(true);
+    });
 
     // 画像ダウンロード & クリップボードコピー
     document.getElementById("downloadImgBtn").addEventListener("click", () => {
@@ -1819,6 +1791,7 @@
         if (!blob) return;
         try {
           await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+          fb.style.color = "#15803d";
           fb.textContent = "クリップボードに画像をコピーしました（Ctrl+V で貼り付けできます）";
           setTimeout(() => { fb.textContent = ""; }, 4000);
         } catch (err) {
@@ -1846,7 +1819,6 @@
         } catch (_) {}
       }
       if (evListObj) {
-        state.dataMode = "local";
         state.events = evListObj.events;
         state.eligibleItems = buildEligibleItems(state.events);
         renderEventSelector();

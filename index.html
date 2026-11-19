@@ -77,7 +77,7 @@
       gap: 8px;
     }
 
-    select, button, input[type="text"], .file-btn {
+    select, button, .file-btn {
       height: 32px;
       padding: 0 10px;
       font-size: 13px;
@@ -86,10 +86,12 @@
       background: var(--surface);
       border: 1px solid var(--border-strong);
       border-radius: 4px;
+      cursor: pointer;
     }
 
-    select, button, .file-btn { cursor: pointer; }
-    select:hover, button:hover, .file-btn:hover { background: #f1f3f6; }
+    select:hover, button:hover, .file-btn:hover {
+      background: #f1f3f6;
+    }
 
     button.primary {
       background: var(--text);
@@ -98,7 +100,9 @@
       font-weight: 600;
     }
 
-    button.primary:hover { background: #2d333d; }
+    button.primary:hover {
+      background: #2d333d;
+    }
 
     button.accent-btn {
       background: var(--accent);
@@ -107,7 +111,9 @@
       font-weight: 600;
     }
 
-    button.accent-btn:hover { background: #1e40af; }
+    button.accent-btn:hover {
+      background: #1e40af;
+    }
 
     .file-btn {
       display: inline-flex;
@@ -157,12 +163,6 @@
       border-color: #fef08a;
     }
 
-    .badge.error {
-      background: #fef2f2;
-      color: #b91c1c;
-      border-color: #fecaca;
-    }
-
     .dot {
       width: 6px;
       height: 6px;
@@ -179,33 +179,48 @@
       gap: 16px;
     }
 
-    .worker-bar {
+    .api-bar {
       background: var(--surface);
       border: 1px solid var(--border);
+      border-left: 4px solid var(--accent);
       border-radius: 4px;
-      padding: 10px 16px;
+      padding: 12px 16px;
       display: flex;
       flex-wrap: wrap;
       align-items: center;
       justify-content: space-between;
-      gap: 10px;
-      font-size: 12px;
+      gap: 12px;
     }
 
-    .worker-input-group {
+    .api-bar-info {
+      font-size: 12px;
+      color: var(--text);
+    }
+
+    .api-bar-info strong {
+      color: var(--accent);
+    }
+
+    .api-bar-actions {
       display: flex;
       flex-wrap: wrap;
       align-items: center;
       gap: 8px;
-      flex: 1;
     }
 
-    .worker-input-group input[type="text"] {
-      min-width: 300px;
-      flex: 1;
-      max-width: 480px;
-      font-family: var(--font-mono);
+    .toast-banner {
+      display: none;
+      padding: 8px 14px;
+      border-radius: 4px;
+      background: var(--ok-soft);
+      border: 1px solid #86efac;
+      color: var(--ok);
       font-size: 12px;
+      font-weight: 600;
+    }
+
+    .toast-banner.show {
+      display: block;
     }
 
     .kpi-grid {
@@ -442,6 +457,25 @@
       border-top: 1px solid var(--border);
     }
 
+    dialog {
+      border: 1px solid var(--border-strong);
+      border-radius: 6px;
+      padding: 18px;
+      max-width: 560px;
+      width: 92%;
+    }
+
+    dialog textarea {
+      width: 100%;
+      height: 160px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      padding: 8px;
+      border: 1px solid var(--border-strong);
+      border-radius: 4px;
+      margin-top: 8px;
+    }
+
     @media (max-width: 960px) {
       .kpi-grid { grid-template-columns: repeat(2, 1fr); }
       .kpi-cell:nth-child(2) { border-right: none; }
@@ -455,7 +489,7 @@
     <div class="header-inner">
       <div class="title-group">
         <h1>イベントボーダー推移・着地予測モニター</h1>
-        <div class="title-sub" id="eventSubtitle">イベント一覧と過去データを自動取得しています...</div>
+        <div class="title-sub" id="eventSubtitle">リポジトリ内の archive/ 過去データを読み込んでいます...</div>
       </div>
       <div class="controls">
         <select id="eventSelect" title="対象イベント・チャプター選択"></select>
@@ -469,11 +503,11 @@
           <option value="100000">100,000位</option>
           <option value="200000">200,000位</option>
         </select>
-        <button class="primary" id="refreshBtn">今すぐ更新</button>
         <label class="file-btn" title="ローカルJSONファイル一括読込">
-          JSON読込
+          JSONファイル読込
           <input type="file" id="localFileInput" accept=".json" multiple />
         </label>
+        <button id="pasteDialogBtn" title="手動貼り付けダイアログを開く">手動貼付</button>
       </div>
     </div>
   </header>
@@ -481,23 +515,27 @@
   <div class="status-bar">
     <div class="status-inner">
       <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
-        <span class="badge paused" id="pollingBadge"><span class="dot"></span><span id="pollingText">初期化中</span></span>
-        <span>自動更新対象: スポットライト / ポイントイベント開催中のみ（10分間隔）</span>
+        <span class="badge live" id="archiveBadge"><span class="dot"></span><span id="archiveStatusText">archive/ 読込中...</span></span>
+        <span>クリップボード自動取込待機中（APIタブで <code>Ctrl+A</code> → <code>Ctrl+C</code> して戻るだけで自動反映）</span>
       </div>
-      <div class="num" id="timerText">次回自動更新: --:--</div>
+      <div class="num" id="lastIngestText">最終取込: 起動時アーカイブ</div>
     </div>
   </div>
 
   <main>
-    <!-- Cloudflare Worker 中継設定バー -->
-    <section class="worker-bar">
-      <div class="worker-input-group">
-        <span style="font-weight:700;">API中継エンドポイント (Cloudflare Worker URL):</span>
-        <input type="text" id="workerUrlInput" placeholder="https://holodori-proxy.xxxx.workers.dev" />
-        <button class="primary" id="saveWorkerBtn">保存して再取得</button>
+    <section class="api-bar">
+      <div class="api-bar-info">
+        <strong>最新データ取得手順：</strong>
+        ①「イベント一覧API」を開いて <code>Ctrl+A</code>→<code>Ctrl+C</code> で戻る → ② 対象を選んで「最新グラフAPI」を開いて <code>Ctrl+A</code>→<code>Ctrl+C</code> で戻るだけで自動更新されます。
       </div>
-      <div id="workerStatusText" class="num" style="color:var(--text-muted);">未設定時は直接接続を試行</div>
+      <div class="api-bar-actions">
+        <button class="accent-btn" id="openListApiBtn">① イベント一覧APIを開く</button>
+        <button class="primary" id="openGraphApiBtn">② 選択中グラフAPIを開く</button>
+        <button id="readClipboardNowBtn" title="ブラウザが自動読取をブロックした場合に手動でクリップボードを読み取る">📋 クリップボードから今すぐ読込</button>
+      </div>
     </section>
+
+    <div class="toast-banner" id="ingestToast"></div>
 
     <!-- KPI Strip -->
     <section class="kpi-grid">
@@ -534,7 +572,7 @@
         <div class="tooltip" id="chartTooltip"></div>
       </div>
       <div class="note-box">
-        ※ 完了済み同種イベントのみを比較対象とし、「現在水準比の上昇トレンド（ドリフト外挿）」と「直近区間時速比」を合成し、さらに開催曜日・終了時刻・イベントシリーズ一致度で重み付けして終盤スパートを予測しています。
+        ※ <code>archive/</code> 内の完了済み同種イベントと比較し、「現在水準比の上昇トレンド（ドリフト外挿）」と「直近区間時速比」を合成し、さらに開催曜日・終了時刻・イベントシリーズ一致度で重み付けして終盤スパートを予測しています。
       </div>
     </section>
 
@@ -628,34 +666,36 @@
     </section>
   </main>
 
-  <script>
-    // ここに作成した Cloudflare Worker の URL を書いておくとアクセス直後から自動接続します
-    const DEFAULT_WORKER_URL = "https://holodori-border.holodori-tool.workers.dev/";
-    const STORAGE_KEY_WORKER = "holodori_worker_url_v1";
+  <dialog id="pasteDialog">
+    <div style="font-weight:700;margin-bottom:4px;">APIレスポンス JSON 手動貼り付け</div>
+    <div style="font-size:12px;color:var(--text-muted);">
+      <code>events</code> または <code>tier</code> を含むJSON文字列を貼り付けてください。
+    </div>
+    <textarea id="pasteTextarea" placeholder='{"events":[...]} または {"rank":5000,"tier":[[...]]}'></textarea>
+    <div style="margin-top:10px;display:flex;justify-content:flex-end;gap:8px;">
+      <button onclick="document.getElementById('pasteDialog').close()">閉じる</button>
+      <button class="primary" onclick="applyManualPaste()">反映する</button>
+    </div>
+  </dialog>
 
-    const REFRESH_INTERVAL_MS = 10 * 60 * 1000; // 10分おき
+  <script>
+    const API_BASE = "https://api.holodori.best/api/events";
+    const ARCHIVE_BASE = "./archive";
     const HIST_COLORS = ["#64748b", "#0d9488", "#7c3aed", "#db2777", "#4f46e5", "#059669"];
     const DAYS_JP = ["日", "月", "火", "水", "木", "金", "土"];
 
     const state = {
-      workerOrigin: localStorage.getItem(STORAGE_KEY_WORKER) || DEFAULT_WORKER_URL,
       events: [],
+      archiveItems: [],
       eligibleItems: [],
       selectedKey: null,
       rank: 5000,
-      graphCache: new Map(),
+      graphCache: new Map(), // `${key}::${rank}` -> graphData
       hiddenSeries: new Set(),
       latestPrediction: null,
-      pollingActive: false,
-      nextRefreshAt: null,
-      timerHandle: null,
-      countdownHandle: null
+      lastClipboardHash: "",
+      pendingApiTarget: null
     };
-
-    function getApiBase() {
-      const clean = (state.workerOrigin || "").trim().replace(/\/+$/, "");
-      return clean ? `${clean}/api/events` : "https://api.holodori.best/api/events";
-    }
 
     function getEventCategory(ev) {
       if (!ev || !ev.hasData) return null;
@@ -688,18 +728,106 @@
       return `${sStr}〜${eStr}`;
     }
 
-    async function apiGetJson(pathAndQuery) {
-      const res = await fetch(`${getApiBase()}${pathAndQuery}`, { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const text = await res.text();
-      if (text.trim().startsWith("<")) throw new Error("Non-JSON (Blocked)");
-      return JSON.parse(text);
+    function showToast(msg) {
+      const el = document.getElementById("ingestToast");
+      el.textContent = msg;
+      el.classList.add("show");
+      document.getElementById("lastIngestText").textContent = `最終取込: ${formatJST(Date.now())}`;
+      clearTimeout(el._t);
+      el._t = setTimeout(() => el.classList.remove("show"), 5500);
     }
 
-    function buildEligibleItems(events) {
+    // =========================================================================
+    // 1. リポジトリ内 archive/index.json の自動読み込み（t100, t500, t1000, t5000, t10000...対応）
+    // =========================================================================
+    async function loadArchiveRepository() {
+      const badge = document.getElementById("archiveBadge");
+      const statusText = document.getElementById("archiveStatusText");
+      try {
+        const res = await fetch(`${ARCHIVE_BASE}/index.json?t=${Math.floor(Date.now() / 60000)}`, { cache: "no-store" });
+        if (!res.ok) throw new Error("archive/index.json not found");
+        const manifest = await res.json();
+        const entries = Array.isArray(manifest) ? manifest : (Array.isArray(manifest.items) ? manifest.items : []);
+
+        let loadedFilesCount = 0;
+
+        for (const ent of entries) {
+          // ent 内の "t100", "t500", "t1000", "t5000", "t10000", "t50000", "t100000", "t200000" 等のキーを自動抽出
+          const tierEntries = [];
+          for (const [k, val] of Object.entries(ent)) {
+            const m = /^t(\d+)$/i.exec(k);
+            if (m && typeof val === "string" && val.trim() !== "") {
+              tierEntries.push({ rankHint: Number(m[1]), file: val.trim() });
+            }
+          }
+          // 旧互換: file キー単独指定があった場合
+          if (tierEntries.length === 0 && typeof ent.file === "string") {
+            tierEntries.push({ rankHint: ent.rank || 5000, file: ent.file.trim() });
+          }
+
+          const displayName = ent.tag || ent.name || ent.chapterId || ent.eventId || "archive";
+          const key = ent.eventId && ent.chapterId
+            ? `${ent.eventId}::${ent.chapterId}`
+            : `archive::${displayName}`;
+
+          let representativeGraph = null;
+
+          for (const te of tierEntries) {
+            try {
+              const gRes = await fetch(`${ARCHIVE_BASE}/${te.file}`, { cache: "default" });
+              if (!gRes.ok) continue;
+              const graph = await gRes.json();
+              if (!graph || !Array.isArray(graph.tier) || graph.tier.length === 0) continue;
+
+              // JSON本体の rank を最優先し、無ければキー名 (t5000 -> 5000) を使用
+              const actualRank = graph.rank || te.rankHint;
+              state.graphCache.set(`${key}::${actualRank}`, graph);
+              loadedFilesCount++;
+              if (!representativeGraph) representativeGraph = graph;
+            } catch (_) {}
+          }
+
+          if (representativeGraph) {
+            const durH = (representativeGraph.endTime - representativeGraph.startTime) / 3600000;
+            const isFinished = representativeGraph.tier[representativeGraph.tier.length - 1][0] >= representativeGraph.endTime - 15 * 60 * 1000;
+            const cat = ent.category || "spotlight";
+            const catLabel = cat === "point" ? "ポイントイベント" : "スポットライト";
+
+            state.archiveItems.push({
+              key,
+              eventId: ent.eventId || "archive",
+              chapterId: ent.chapterId || displayName,
+              category: cat,
+              catLabel,
+              label: `[過去] ${displayName} (${formatJST(representativeGraph.startTime, true)}〜, ${Math.round(durH)}h)`,
+              shortLabel: displayName,
+              startTime: representativeGraph.startTime,
+              endTime: representativeGraph.endTime,
+              durationH: durH,
+              live: !isFinished,
+              isArchive: true
+            });
+          }
+        }
+
+        badge.className = "badge live";
+        statusText.textContent = `archive/ 読込完了（${state.archiveItems.length}イベント / 計${loadedFilesCount}ファイル）`;
+        rebuildCombinedItems();
+      } catch (err) {
+        badge.className = "badge paused";
+        statusText.textContent = "archive/index.json 未検出（APIコピーまたはJSONファイル読込で動作）";
+      }
+    }
+
+    function rebuildCombinedItems() {
       const now = Date.now();
-      const items = [];
-      for (const ev of events) {
+      const map = new Map();
+
+      for (const aItem of state.archiveItems) {
+        map.set(aItem.key, aItem);
+      }
+
+      for (const ev of state.events) {
         const cat = getEventCategory(ev);
         if (!cat) continue;
         const chapters = Array.isArray(ev.chapters) && ev.chapters.length > 0
@@ -716,27 +844,35 @@
           const isStarted = st <= now || !ev.live;
           if (!isStarted && !isChapterLive) continue;
 
-          const chName = cm.name ? ` / ${cm.name}` : "";
+          const key = `${ev.eventId}::${cid}`;
+          const existingArch = map.get(key);
+          const chName = cm.name ? ` / ${cm.name}` : (existingArch ? ` / ${existingArch.shortLabel}` : "");
+          const shortName = cm.shortName || cm.name || (existingArch ? existingArch.shortLabel : ev.eventId);
           const catLabel = cat === "spotlight" ? "スポットライト" : "ポイントイベント";
           const durH = (et - st) / 3600000;
-          items.push({
-            key: `${ev.eventId}::${cid}`,
+
+          map.set(key, {
+            key,
             eventId: ev.eventId,
             chapterId: cid,
             category: cat,
             catLabel,
             label: `${catLabel}${chName} (${formatJST(st, true)}〜, ${Math.round(durH)}h)${isChapterLive ? " [開催中]" : ""}`,
-            shortLabel: cm.shortName || cm.name || ev.eventId,
+            shortLabel: shortName,
             startTime: st,
             endTime: et,
             durationH: durH,
             live: isChapterLive,
-            rawEvent: ev
+            isArchive: Boolean(existingArch)
           });
         }
       }
+
+      const items = Array.from(map.values());
       items.sort((a, b) => b.startTime - a.startTime);
-      return items;
+      state.eligibleItems = items;
+      renderEventSelector();
+      recalculateAndRender();
     }
 
     function renderEventSelector() {
@@ -744,63 +880,154 @@
       const prev = state.selectedKey;
       sel.innerHTML = "";
       for (const item of state.eligibleItems) {
+        const hasGraph = state.graphCache.has(`${item.key}::${state.rank}`);
         const opt = document.createElement("option");
         opt.value = item.key;
-        opt.textContent = item.label;
+        opt.textContent = `${item.label}${hasGraph ? " ●" : ""}`;
         sel.appendChild(opt);
       }
+
       if (prev && state.eligibleItems.some(x => x.key === prev)) {
         sel.value = prev;
       } else {
-        const liveItem = state.eligibleItems.find(x => x.live);
-        const target = liveItem || state.eligibleItems[0];
-        if (target) {
-          state.selectedKey = target.key;
-          sel.value = target.key;
+        const liveWithGraph = state.eligibleItems.find(x => x.live && state.graphCache.has(`${x.key}::${state.rank}`));
+        const liveAny = state.eligibleItems.find(x => x.live);
+        const latestWithGraph = state.eligibleItems.find(x => state.graphCache.has(`${x.key}::${state.rank}`));
+        const chosen = liveWithGraph || liveAny || latestWithGraph || state.eligibleItems[0];
+        if (chosen) {
+          state.selectedKey = chosen.key;
+          sel.value = chosen.key;
         }
       }
     }
 
-    function updatePollingStatus() {
-      const badge = document.getElementById("pollingBadge");
-      const text = document.getElementById("pollingText");
-      const liveEv = state.events.find(e => e.live);
-      const liveCat = getEventCategory(liveEv);
+    // =========================================================================
+    // 2. API タブ開通 ＆ クリップボード自動検知取込
+    // =========================================================================
+    document.getElementById("openListApiBtn").addEventListener("click", () => {
+      state.pendingApiTarget = null;
+      window.open(`${API_BASE}/list?region=jp&language=jpn`, "_blank");
+    });
 
-      if (liveEv && liveCat) {
-        state.pollingActive = true;
-        badge.className = "badge live";
-        text.textContent = `リアルタイム監視中（${liveCat === "spotlight" ? "スポットライト" : "ポイントイベント"}開催中）`;
-        scheduleNextRefresh();
-      } else {
-        state.pollingActive = false;
-        badge.className = "badge paused";
-        const reason = liveEv ? `現在開催中「${liveEv.name}」は対象外` : "対象イベント開催外";
-        text.textContent = `自動更新停止中（${reason}）`;
-        clearTimeout(state.timerHandle);
-        state.nextRefreshAt = null;
-        document.getElementById("timerText").textContent = "次回自動更新: 停止中";
+    document.getElementById("openGraphApiBtn").addEventListener("click", () => {
+      const item = state.eligibleItems.find(x => x.key === state.selectedKey);
+      const eid = item ? item.eventId : "marathon_event-relay-004";
+      const cid = item ? item.chapterId : "marathon_event-relay-004-chapter-03";
+      state.pendingApiTarget = item ? { key: item.key, rank: state.rank } : null;
+      window.open(
+        `${API_BASE}/graph?region=jp&rank=${state.rank}&border=true&music=false&event_id=${encodeURIComponent(eid)}&chapter_id=${encodeURIComponent(cid)}`,
+        "_blank"
+      );
+    });
+
+    function ingestParsedJson(parsed, sourceName = "clipboard") {
+      if (!parsed || typeof parsed !== "object") return false;
+
+      if (Array.isArray(parsed.events)) {
+        state.events = parsed.events;
+        rebuildCombinedItems();
+        showToast(`イベント一覧を取り込みました（${parsed.events.length}件中 対象イベントを抽出）`);
+        return true;
+      }
+
+      if (Array.isArray(parsed.tier) && parsed.startTime && parsed.endTime) {
+        const gRank = parsed.rank || state.rank;
+        let matched = state.eligibleItems.find(
+          it => Math.abs(it.startTime - parsed.startTime) < 120000 && Math.abs(it.endTime - parsed.endTime) < 120000
+        );
+        if (!matched && state.pendingApiTarget) {
+          matched = state.eligibleItems.find(it => it.key === state.pendingApiTarget.key);
+        }
+        if (!matched) {
+          const tempKey = `imported::${parsed.startTime}_${parsed.endTime}`;
+          matched = {
+            key: tempKey,
+            eventId: "imported",
+            chapterId: `${parsed.startTime}`,
+            category: "spotlight",
+            catLabel: "取込イベント",
+            label: `取込データ (${formatJST(parsed.startTime, true)}〜)`,
+            shortLabel: sourceName !== "clipboard" ? sourceName : `イベント(${formatJST(parsed.startTime, true)})`,
+            startTime: parsed.startTime,
+            endTime: parsed.endTime,
+            durationH: (parsed.endTime - parsed.startTime) / 3600000,
+            live: parsed.tier[parsed.tier.length - 1][0] < parsed.endTime - 60000
+          };
+          state.eligibleItems.unshift(matched);
+        }
+
+        state.graphCache.set(`${matched.key}::${gRank}`, parsed);
+        state.selectedKey = matched.key;
+        state.rank = gRank;
+        const rankSel = document.getElementById("rankSelect");
+        if (Array.from(rankSel.options).some(o => Number(o.value) === gRank)) {
+          rankSel.value = String(gRank);
+        }
+
+        renderEventSelector();
+        recalculateAndRender();
+        const latestVal = parsed.tier[parsed.tier.length - 1][1];
+        showToast(`「${matched.shortLabel}」(T${gRank.toLocaleString()}) のグラフデータを取り込みました（最新: ${formatNumber(latestVal)} pt）`);
+        return true;
+      }
+
+      return false;
+    }
+
+    async function tryReadClipboard(manual = false) {
+      if (!navigator.clipboard || !navigator.clipboard.readText) {
+        if (manual) document.getElementById("pasteDialog").showModal();
+        return;
+      }
+      try {
+        const raw = (await navigator.clipboard.readText()).trim();
+        if (!raw) return;
+        if (!manual && raw === state.lastClipboardHash) return;
+        if (!raw.startsWith("{")) {
+          if (manual) alert("クリップボード内のテキストが JSON 形式ではありません。APIページで Ctrl+A → Ctrl+C を実行してください。");
+          return;
+        }
+        const parsed = JSON.parse(raw);
+        if (ingestParsedJson(parsed, "clipboard")) {
+          state.lastClipboardHash = raw;
+        } else if (manual) {
+          alert("有効な events または tier データが含まれていません。");
+        }
+      } catch (err) {
+        if (manual) {
+          document.getElementById("pasteDialog").showModal();
+        }
       }
     }
 
-    function scheduleNextRefresh() {
-      clearTimeout(state.timerHandle);
-      if (!state.pollingActive) return;
-      state.nextRefreshAt = Date.now() + REFRESH_INTERVAL_MS;
-      state.timerHandle = setTimeout(() => runFullLoad(true), REFRESH_INTERVAL_MS);
+    window.addEventListener("focus", () => tryReadClipboard(false));
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") tryReadClipboard(false);
+    });
+
+    document.getElementById("readClipboardNowBtn").addEventListener("click", () => tryReadClipboard(true));
+    document.getElementById("pasteDialogBtn").addEventListener("click", () => document.getElementById("pasteDialog").showModal());
+
+    function applyManualPaste() {
+      const raw = document.getElementById("pasteTextarea").value.trim();
+      if (!raw) return;
+      try {
+        const parsed = JSON.parse(raw);
+        if (ingestParsedJson(parsed, "manual")) {
+          state.lastClipboardHash = raw;
+          document.getElementById("pasteDialog").close();
+          document.getElementById("pasteTextarea").value = "";
+        } else {
+          alert("有効な events または tier データが見つかりませんでした。");
+        }
+      } catch (e) {
+        alert("JSON解析エラー: " + e.message);
+      }
     }
 
-    function startCountdownLoop() {
-      clearInterval(state.countdownHandle);
-      state.countdownHandle = setInterval(() => {
-        if (!state.pollingActive || !state.nextRefreshAt) return;
-        const rem = Math.max(0, state.nextRefreshAt - Date.now());
-        const m = String(Math.floor(rem / 60000)).padStart(2, "0");
-        const s = String(Math.floor((rem % 60000) / 1000)).padStart(2, "0");
-        document.getElementById("timerText").textContent = `次回自動更新: ${m}:${s}`;
-      }, 1000);
-    }
-
+    // =========================================================================
+    // 3. 着地予測エンジン
+    // =========================================================================
     function interpScoreAtProgress(graph, prog) {
       const st = graph.startTime;
       const et = graph.endTime;
@@ -964,6 +1191,31 @@
         forecastSeries,
         refModels
       };
+    }
+
+    function recalculateAndRender() {
+      const targetItem = state.eligibleItems.find(x => x.key === state.selectedKey);
+      if (!targetItem) return;
+
+      const targetGraph = state.graphCache.get(`${targetItem.key}::${state.rank}`);
+      if (!targetGraph) {
+        document.getElementById("eventSubtitle").textContent =
+          `${targetItem.catLabel} / ${targetItem.shortLabel}（${state.rank.toLocaleString()}位）は未取得です。「② 選択中グラフAPIを開く」からコピーしてください。`;
+        return;
+      }
+
+      const refPairs = [];
+      for (const cand of state.eligibleItems) {
+        if (cand.key === targetItem.key || cand.live) continue;
+        if (cand.category !== targetItem.category) continue;
+        const g = state.graphCache.get(`${cand.key}::${state.rank}`);
+        if (g) {
+          refPairs.push({ item: cand, graph: g });
+        }
+      }
+
+      const pred = computePrediction(targetItem, targetGraph, refPairs);
+      renderAll(pred);
     }
 
     function renderAll(pred) {
@@ -1247,7 +1499,9 @@
       }
     }
 
-    // 順位ティア別テーマ定義（~T1000:虹色, T5000:紫輝く, T10000:プラチナ, T50000:ゴールド, T100000:シルバー, それ以下:ブロンズ）
+    // =========================================================================
+    // 4. 順位ティア別テーマ画像カード生成
+    // =========================================================================
     function getTierTheme(rank) {
       const override = document.getElementById("themeOverrideSelect")?.value || "auto";
       let key = override;
@@ -1704,76 +1958,6 @@
       ctx.textAlign = "left";
     }
 
-    async function fetchGraphCached(item, rank, force = false) {
-      const ck = `${item.eventId}::${item.chapterId}::${rank}`;
-      if (!force && state.graphCache.has(ck)) {
-        return state.graphCache.get(ck);
-      }
-      const g = await apiGetJson(
-        `/graph?region=jp&rank=${rank}&border=true&music=false&event_id=${encodeURIComponent(item.eventId)}&chapter_id=${encodeURIComponent(item.chapterId)}`
-      );
-      if (g && Array.isArray(g.tier) && g.tier.length > 0) {
-        state.graphCache.set(ck, g);
-      }
-      return g;
-    }
-
-    async function loadSelectedAndPredict(forceRefresh = false) {
-      const targetItem = state.eligibleItems.find(x => x.key === state.selectedKey);
-      if (!targetItem) return;
-
-      const targetGraph = await fetchGraphCached(targetItem, state.rank, forceRefresh);
-
-      // 過去完了イベント・チャプターを最大10件自動取得して比較母集団を構築
-      const sameCategoryRefs = state.eligibleItems
-        .filter(x => x.category === targetItem.category && x.key !== targetItem.key && !x.live)
-        .slice(0, 10);
-
-      const refPairs = [];
-      for (const refItem of sameCategoryRefs) {
-        try {
-          const g = await fetchGraphCached(refItem, state.rank, false);
-          if (g && Array.isArray(g.tier) && g.tier.length > 0) {
-            refPairs.push({ item: refItem, graph: g });
-          }
-        } catch (_) {}
-      }
-
-      const pred = computePrediction(targetItem, targetGraph, refPairs);
-      renderAll(pred);
-    }
-
-    async function runFullLoad(forceRefresh = false) {
-      try {
-        const listData = await apiGetJson("/list?region=jp&language=jpn");
-        state.events = listData.events || [];
-        state.eligibleItems = buildEligibleItems(state.events);
-        renderEventSelector();
-        updatePollingStatus();
-        document.getElementById("workerStatusText").textContent =
-          state.workerOrigin ? `接続先: ${state.workerOrigin}` : "接続先: Direct API";
-        await loadSelectedAndPredict(forceRefresh);
-      } catch (err) {
-        console.error(err);
-        const badge = document.getElementById("pollingBadge");
-        badge.className = "badge error";
-        document.getElementById("pollingText").textContent = `取得エラー: ${err.message}`;
-        document.getElementById("eventSubtitle").textContent =
-          "上の入力欄に Cloudflare Worker の URL を保存するか、右上の「JSON読込」からファイルを選択してください。";
-      }
-    }
-
-    // Worker URL 保存ボタン
-    document.getElementById("workerUrlInput").value = state.workerOrigin;
-    document.getElementById("saveWorkerBtn").addEventListener("click", () => {
-      const val = document.getElementById("workerUrlInput").value.trim().replace(/\/+$/, "");
-      state.workerOrigin = val;
-      localStorage.setItem(STORAGE_KEY_WORKER, val);
-      state.graphCache.clear();
-      runFullLoad(true);
-    });
-
-    // 画像ダウンロード & クリップボードコピー
     document.getElementById("downloadImgBtn").addEventListener("click", () => {
       const canvas = document.getElementById("shareCanvas");
       const pred = state.latestPrediction;
@@ -1805,60 +1989,30 @@
       if (state.latestPrediction) renderShareCard(state.latestPrediction);
     });
 
-    // ローカルJSON複数読込フォールバック
     document.getElementById("localFileInput").addEventListener("change", async (e) => {
       const files = Array.from(e.target.files || []);
       if (files.length === 0) return;
-      let evListObj = null;
-      const graphs = [];
       for (const f of files) {
         try {
           const data = JSON.parse(await f.text());
-          if (Array.isArray(data.events)) evListObj = data;
-          else if (Array.isArray(data.tier) && data.startTime && data.endTime) graphs.push({ name: f.name.replace(/\.json$/i, ""), data });
+          ingestParsedJson(data, f.name.replace(/\.json$/i, ""));
         } catch (_) {}
       }
-      if (evListObj) {
-        state.events = evListObj.events;
-        state.eligibleItems = buildEligibleItems(state.events);
-        renderEventSelector();
-        updatePollingStatus();
-      }
-      for (const gEnt of graphs) {
-        const g = gEnt.data;
-        const r = g.rank || state.rank;
-        const matched = state.eligibleItems.find(it => Math.abs(it.startTime - g.startTime) < 120000 && Math.abs(it.endTime - g.endTime) < 120000);
-        if (matched) {
-          state.graphCache.set(`${matched.eventId}::${matched.chapterId}::${r}`, g);
-        }
-      }
-      const avail = state.eligibleItems.find(it => state.graphCache.has(`${it.eventId}::${it.chapterId}::${state.rank}`));
-      if (avail) {
-        state.selectedKey = avail.key;
-        document.getElementById("eventSelect").value = avail.key;
-        const tg = state.graphCache.get(`${avail.eventId}::${avail.chapterId}::${state.rank}`);
-        const refs = state.eligibleItems
-          .filter(x => x.category === avail.category && x.key !== avail.key && !x.live)
-          .map(x => ({ item: x, graph: state.graphCache.get(`${x.eventId}::${x.chapterId}::${state.rank}`) }))
-          .filter(p => p.graph);
-        renderAll(computePrediction(avail, tg, refs));
-      }
+      e.target.value = "";
     });
 
     document.getElementById("eventSelect").addEventListener("change", (e) => {
       state.selectedKey = e.target.value;
-      loadSelectedAndPredict(false);
+      recalculateAndRender();
     });
 
     document.getElementById("rankSelect").addEventListener("change", (e) => {
       state.rank = Number(e.target.value);
-      loadSelectedAndPredict(true);
+      renderEventSelector();
+      recalculateAndRender();
     });
 
-    document.getElementById("refreshBtn").addEventListener("click", () => runFullLoad(true));
-
-    startCountdownLoop();
-    runFullLoad(true);
+    loadArchiveRepository();
   </script>
 </body>
 </html>

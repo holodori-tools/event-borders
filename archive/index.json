@@ -1,5 +1,33 @@
 [
   {
+    "tag": "akiroze",
+    "category": "spotlight",
+    "eventId": "marathon_event-relay-002",
+    "chapterId": "marathon_event-relay-002-chapter-01",
+    "t5000": "aki_5000.json"
+  },
+  {
+    "tag": "shiori",
+    "category": "spotlight",
+    "eventId": "marathon_event-relay-002",
+    "chapterId": "marathon_event-relay-002-chapter-02",
+    "t5000": "shiori_5000.json"
+  },
+  {
+    "tag": "laplus",
+    "category": "spotlight",
+    "eventId": "marathon_event-relay-002",
+    "chapterId": "marathon_event-relay-002-chapter-03",
+    "t5000": "laplus_5000.json"
+  },
+  {
+    "tag": "anya",
+    "category": "spotlight",
+    "eventId": "marathon_event-relay-002",
+    "chapterId": "marathon_event-relay-002-chapter-04",
+    "t5000": "anya_5000.json"
+  },
+  {
     "tag": "towa",
     "category": "spotlight",
     "eventId": "marathon_event-relay-003",

@@ -545,12 +545,12 @@
         <div class="kpi-sub num" id="kpiCurrentSub">経過: - / 進捗: -</div>
       </div>
       <div class="kpi-cell">
-        <div class="kpi-label">最終着地予測（本命・加重ドリフト補正）</div>
+        <div class="kpi-label">最終着地予測（本命・環境＆属性補正）</div>
         <div class="kpi-value forecast num" id="kpiForecast">-</div>
         <div class="kpi-sub num" id="kpiForecastSub">単純比例比: -</div>
       </div>
       <div class="kpi-cell">
-        <div class="kpi-label">予測レンジ（±誤差幅 / 過去同種幅）</div>
+        <div class="kpi-label">予測レンジ（±誤差幅 / 加重標準偏差）</div>
         <div class="kpi-value num" id="kpiRange">-</div>
         <div class="kpi-sub num" id="kpiRangeSub">下限〜上限目安</div>
       </div>
@@ -571,8 +571,8 @@
         <svg id="trendChart" viewBox="0 0 1000 360" preserveAspectRatio="none"></svg>
         <div class="tooltip" id="chartTooltip"></div>
       </div>
-      <div class="note-box">
-        ※ <code>archive/</code> 内の完了済み同種イベントと比較し、「現在水準比の上昇トレンド（ドリフト外挿）」と「直近区間時速比」を合成し、さらに開催曜日・終了時刻・イベントシリーズ一致度で重み付けして終盤スパートを予測しています。
+      <div class="note-box" id="modelDiagnosticsNote">
+        ※ <code>archive/</code> 内の完了済み同種イベントと比較し、JST時間帯リズム正規化・直前イベントの石余り/過熱反動・JP/人気メンバー補正・進捗率別ベイズ重みシフトを統合して終盤スパートを予測しています。
       </div>
     </section>
 
@@ -738,7 +738,37 @@
     }
 
     // =========================================================================
-    // 1. リポジトリ内 archive/index.json の自動読み込み（t100, t500, t1000, t5000, t10000...対応）
+    // メンバー属性（JP勢・人気度）の推定ヘルパー
+    // =========================================================================
+    function inferMemberBoost(meta = {}, labelText = "") {
+      if (typeof meta.heat === "number") return meta.heat;
+      let boost = 1.0;
+
+      const jpKeywords = [
+        "towa", "botan", "roboko", "pekora", "suisei", "miko", "marine", "fubuki",
+        "aqua", "korone", "okayu", "subaru", "noel", "flare", "kanata", "watame",
+        "luna", "lamy", "nene", "polka", "laplus", "lui", "koyori", "chloe", "iroha",
+        "sora", "azki", "mel", "aki", "haato", "matsuri", "shion", "ayame", "choco", "mio",
+        "ao", "kanade", "ririka", "raden", "hajime", "regloss", "flow glow",
+        "トワ", "ぼたん", "ロボ子", "ぺこら", "すいせい", "みこ", "マリン", "船長", "フブキ",
+        "あくあ", "ころね", "おかゆ", "スバル", "ノエル", "フレア", "かなた", "わため",
+        "ルーナ", "ラミィ", "ねね", "ポルカ", "ラプラス", "ルイ", "こより", "クロヱ", "いろは",
+        "そら", "メル", "アキ", "はあと", "まつり", "シオン", "あやめ", "ちょこ", "ミオ",
+        "リグロス", "青", "奏", "莉々華", "らでん", "はじめ"
+      ];
+
+      const isJp = meta.branch === "jp" || jpKeywords.some(k => labelText.toLowerCase().includes(k));
+      if (isJp) boost += 0.05;
+
+      if (meta.popularity === "very_high") boost += 0.08;
+      else if (meta.popularity === "high") boost += 0.04;
+      else if (meta.popularity === "low") boost -= 0.03;
+
+      return boost;
+    }
+
+    // =========================================================================
+    // 1. リポジトリ内 archive/index.json の自動読み込み
     // =========================================================================
     async function loadArchiveRepository() {
       const badge = document.getElementById("archiveBadge");
@@ -752,7 +782,6 @@
         let loadedFilesCount = 0;
 
         for (const ent of entries) {
-          // ent 内の "t100", "t500", "t1000", "t5000", "t10000", "t50000", "t100000", "t200000" 等のキーを自動抽出
           const tierEntries = [];
           for (const [k, val] of Object.entries(ent)) {
             const m = /^t(\d+)$/i.exec(k);
@@ -760,7 +789,6 @@
               tierEntries.push({ rankHint: Number(m[1]), file: val.trim() });
             }
           }
-          // 旧互換: file キー単独指定があった場合
           if (tierEntries.length === 0 && typeof ent.file === "string") {
             tierEntries.push({ rankHint: ent.rank || 5000, file: ent.file.trim() });
           }
@@ -779,7 +807,6 @@
               const graph = await gRes.json();
               if (!graph || !Array.isArray(graph.tier) || graph.tier.length === 0) continue;
 
-              // JSON本体の rank を最優先し、無ければキー名 (t5000 -> 5000) を使用
               const actualRank = graph.rank || te.rankHint;
               state.graphCache.set(`${key}::${actualRank}`, graph);
               loadedFilesCount++;
@@ -805,7 +832,10 @@
               endTime: representativeGraph.endTime,
               durationH: durH,
               live: !isFinished,
-              isArchive: true
+              isArchive: true,
+              branch: ent.branch || "",
+              popularity: ent.popularity || "",
+              memberBoost: inferMemberBoost(ent, displayName)
             });
           }
         }
@@ -863,7 +893,10 @@
             endTime: et,
             durationH: durH,
             live: isChapterLive,
-            isArchive: Boolean(existingArch)
+            isArchive: Boolean(existingArch),
+            branch: existingArch?.branch || "",
+            popularity: existingArch?.popularity || "",
+            memberBoost: existingArch ? existingArch.memberBoost : inferMemberBoost({}, `${ev.name || ""} ${shortName}`)
           });
         }
       }
@@ -940,6 +973,7 @@
         }
         if (!matched) {
           const tempKey = `imported::${parsed.startTime}_${parsed.endTime}`;
+          const labelBase = sourceName !== "clipboard" ? sourceName : `イベント(${formatJST(parsed.startTime, true)})`;
           matched = {
             key: tempKey,
             eventId: "imported",
@@ -947,11 +981,12 @@
             category: "spotlight",
             catLabel: "取込イベント",
             label: `取込データ (${formatJST(parsed.startTime, true)}〜)`,
-            shortLabel: sourceName !== "clipboard" ? sourceName : `イベント(${formatJST(parsed.startTime, true)})`,
+            shortLabel: labelBase,
             startTime: parsed.startTime,
             endTime: parsed.endTime,
             durationH: (parsed.endTime - parsed.startTime) / 3600000,
-            live: parsed.tier[parsed.tier.length - 1][0] < parsed.endTime - 60000
+            live: parsed.tier[parsed.tier.length - 1][0] < parsed.endTime - 60000,
+            memberBoost: inferMemberBoost({}, labelBase)
           };
           state.eligibleItems.unshift(matched);
         }
@@ -1026,15 +1061,13 @@
     }
 
     // =========================================================================
-    // 3. 着地予測エンジン
+    // 3. 高精度カスタム着地予測モデル（石余り/過熱反動 ＋ JP人気補正 ＋ JST時間帯正規化）
     // =========================================================================
-    function interpScoreAtProgress(graph, prog) {
+    function interpScoreAtTime(graph, targetT) {
       const st = graph.startTime;
-      const et = graph.endTime;
-      const dur = et - st;
-      const targetT = st + prog * dur;
       const pts = graph.tier;
       if (!pts || pts.length === 0) return null;
+      if (targetT <= st) return 0;
       if (targetT <= pts[0][0]) {
         return pts[0][1] * Math.max(0, (targetT - st) / Math.max(1, pts[0][0] - st));
       }
@@ -1052,6 +1085,22 @@
       return v0 + (v1 - v0) * ((targetT - t0) / Math.max(1, t1 - t0));
     }
 
+    function interpScoreAtProgress(graph, prog) {
+      const targetT = graph.startTime + prog * (graph.endTime - graph.startTime);
+      return interpScoreAtTime(graph, targetT);
+    }
+
+    function getJstHourActivityFactor(ms) {
+      const h = new Date(ms + 9 * 3600 * 1000).getUTCHours();
+      const table = [
+        0.55, 0.35, 0.22, 0.16, 0.15, 0.20, // 00-05時
+        0.35, 0.55, 0.65, 0.65, 0.70, 0.75, // 06-11時
+        0.85, 0.80, 0.80, 0.85, 0.90, 1.00, // 12-17時
+        1.10, 1.20, 1.35, 1.40, 1.25, 0.90  // 18-23時
+      ];
+      return table[h] || 1.0;
+    }
+
     function computePrediction(targetItem, targetGraph, refPairs) {
       const st = targetGraph.startTime;
       const et = targetGraph.endTime;
@@ -1064,55 +1113,125 @@
       const pCur = Math.min(1, elapsedMs / dur);
       const isFinished = pCur >= 0.998 && !targetItem.live;
 
-      const wShort = Math.min(0.10, pCur * 0.35);
-      const sShortPrev = interpScoreAtProgress(targetGraph, Math.max(0, pCur - wShort));
-      const shortHours = (wShort * dur) / 3600000;
-      const recentPace = shortHours > 0 ? (currentScore - sShortPrev) / shortHours : 0;
+      const recentWindowMs = Math.min(3600 * 1000, Math.max(15 * 60 * 1000, elapsedMs * 0.12));
+      const sRecentPrev = interpScoreAtTime(targetGraph, Math.max(st, lastT - recentWindowMs));
+      const recentPace = ((currentScore - sRecentPrev) / recentWindowMs) * 3600000;
 
-      const pTrendBase = Math.max(0.15, pCur - Math.min(0.25, pCur * 0.45));
-      const sTrendBase = interpScoreAtProgress(targetGraph, pTrendBase);
-      const dpTrend = Math.max(0.05, pCur - pTrendBase);
+      const midWindowMs = Math.max(recentWindowMs * 1.5, elapsedMs * 0.28);
+      const sMidPrev = interpScoreAtTime(targetGraph, Math.max(st, lastT - midWindowMs));
+      const midPace = ((currentScore - sMidPrev) / midWindowMs) * 3600000;
 
       const naiveLinear = pCur > 0.02 ? currentScore / pCur : currentScore;
+
+      const validRefs = refPairs
+        .filter(({ graph }) => {
+          if (!graph || !Array.isArray(graph.tier) || graph.tier.length < 20) return false;
+          const gDur = graph.endTime - graph.startTime;
+          const gProg = (graph.tier[graph.tier.length - 1][0] - graph.startTime) / Math.max(1, gDur);
+          return gProg >= 0.98;
+        })
+        .sort((a, b) => b.graph.endTime - a.graph.endTime);
+
+      // 1. 直前イベントからのリソース・石余り / 過熱反動係数
+      let resourceFactor = 1.0;
+      const diagTags = [];
+
+      if (Array.isArray(state.events) && state.events.length > 0) {
+        const priorEvents = state.events
+          .filter(ev => ev.endTime && ev.endTime <= st + 3600000 && ev.eventId !== targetItem.eventId)
+          .sort((a, b) => b.endTime - a.endTime);
+
+        if (priorEvents.length > 0) {
+          const prevEv = priorEvents[0];
+          const prevName = prevEv.name || "";
+          if (prevEv.isSongScore === true || prevName.includes("スコア")) {
+            resourceFactor *= 1.09;
+            diagTags.push("直前スコアチャレ（石余り上昇補正 +9%）");
+          }
+        }
+      }
+
+      if (validRefs.length >= 2) {
+        const finals = validRefs.map(r => r.graph.tier[r.graph.tier.length - 1][1]);
+        const avgFinal = finals.reduce((a, b) => a + b, 0) / finals.length;
+        const prevSameCat = validRefs.find(r => r.graph.endTime <= st + 3600000);
+        if (prevSameCat && avgFinal > 0) {
+          const prevFinal = prevSameCat.graph.tier[prevSameCat.graph.tier.length - 1][1];
+          const prevHeatRatio = prevFinal / avgFinal;
+          const rebound = Math.max(0.84, Math.min(1.14, 1.0 - (prevHeatRatio - 1.0) * 0.25));
+          resourceFactor *= rebound;
+          if (prevHeatRatio > 1.12) {
+            diagTags.push(`前回過熱反動(${(rebound * 100 - 100).toFixed(1)}%)`);
+          } else if (prevHeatRatio < 0.88) {
+            diagTags.push(`前回低調反発(+${(rebound * 100 - 100).toFixed(1)}%)`);
+          }
+        }
+      }
+
+      // 2. メンバー属性（JP/人気）＋ 初動熱量からのスパート補正
+      const baseMemberBoost = targetItem.memberBoost || inferMemberBoost({}, targetItem.shortLabel);
+      if (baseMemberBoost > 1.02) {
+        diagTags.push(`属性ブースト(+${((baseMemberBoost - 1) * 100).toFixed(0)}%)`);
+      }
+
+      let observedHeatBoost = 1.0;
+      if (validRefs.length > 0) {
+        const avgHCur = validRefs.reduce((acc, r) => acc + (interpScoreAtProgress(r.graph, pCur) || 0), 0) / validRefs.length;
+        if (avgHCur > 0) {
+          const curHeat = currentScore / avgHCur;
+          observedHeatBoost = Math.max(0.92, Math.min(1.15, 1.0 + (curHeat - 1.0) * 0.14));
+        }
+      }
+      const combinedHeatFactor = baseMemberBoost * observedHeatBoost;
+
+      // 進捗率に応じた動的重み（序盤は水準重視、終盤は実測時速重視）
+      const wPaceWeight = Math.min(0.75, Math.max(0.20, Math.pow(pCur, 1.3)));
+      const wLevelWeight = 1.0 - wPaceWeight;
 
       const targetEndHour = new Date(et + 9 * 3600 * 1000).getUTCHours();
       const targetStartDay = new Date(st + 9 * 3600 * 1000).getUTCDay();
 
-      const refModels = [];
-      for (const { item, graph } of refPairs) {
-        if (!graph || !Array.isArray(graph.tier) || graph.tier.length < 20) continue;
-        const gDur = graph.endTime - graph.startTime;
-        const gProg = (graph.tier[graph.tier.length - 1][0] - graph.startTime) / Math.max(1, gDur);
-        if (gProg < 0.98) continue;
+      const curActivity = getJstHourActivityFactor(lastT);
+      const normalizedCurPace = (0.65 * recentPace + 0.35 * midPace) / Math.max(0.2, curActivity);
 
+      const refModels = [];
+      for (const { item, graph } of validRefs) {
+        const gDur = graph.endTime - graph.startTime;
         const hCur = interpScoreAtProgress(graph, pCur);
         const hFinal = graph.tier[graph.tier.length - 1][1];
         if (!hCur || hCur <= 0 || hFinal <= hCur) continue;
 
         const rNow = currentScore / hCur;
-        const hTrendBase = interpScoreAtProgress(graph, pTrendBase);
-        const rBase = hTrendBase > 0 ? sTrendBase / hTrendBase : rNow;
-        const slopeR = (rNow - rBase) / dpTrend;
-        const rEndProj = Math.max(rNow * 0.85, rNow + slopeR * (1 - pCur) * 0.55);
 
-        const hShortPrev = interpScoreAtProgress(graph, Math.max(0, pCur - wShort));
-        const hShortHours = (wShort * gDur) / 3600000;
-        const hRecentPace = hShortHours > 0 ? (hCur - hShortPrev) / hShortHours : 0;
-        const rPace = hRecentPace > 0 ? recentPace / hRecentPace : rNow;
+        const hTargetT = graph.startTime + pCur * gDur;
+        const hRecentPrev = interpScoreAtTime(graph, Math.max(graph.startTime, hTargetT - recentWindowMs));
+        const hRecentPace = ((hCur - hRecentPrev) / recentWindowMs) * 3600000;
+        const hActivity = getJstHourActivityFactor(hTargetT);
+        const hNormPace = hRecentPace / Math.max(0.2, hActivity);
+        const rPace = hNormPace > 0 ? normalizedCurPace / hNormPace : rNow;
 
-        const multiplier = 0.55 * rEndProj + 0.45 * rPace;
+        const refMemberBoost = item.memberBoost || inferMemberBoost({}, item.shortLabel);
+        const relativeMemberRatio = combinedHeatFactor / Math.max(0.85, refMemberBoost);
+
+        const remainingDamp = 1.0 - pCur * 0.55;
+        const totalExternalAdj = 1.0 + ((resourceFactor * relativeMemberRatio) - 1.0) * remainingDamp;
+
+        const baseMultiplier = wLevelWeight * rNow + wPaceWeight * rPace;
+        const multiplier = baseMultiplier * totalExternalAdj;
+
         const impliedFinal = isFinished ? currentScore : currentScore + (hFinal - hCur) * multiplier;
 
         let weight = 1.0;
         const refEndHour = new Date(graph.endTime + 9 * 3600 * 1000).getUTCHours();
         const refStartDay = new Date(graph.startTime + 9 * 3600 * 1000).getUTCDay();
-        if (Math.abs(item.durationH - targetItem.durationH) < 2) weight += 0.6;
-        if (refEndHour === targetEndHour) weight += 0.6;
+        if (Math.abs(item.durationH - targetItem.durationH) < 2) weight += 0.7;
+        if (refEndHour === targetEndHour) weight += 0.7;
         if (refStartDay === targetStartDay) weight += 1.2;
         if (item.eventId && item.eventId === targetItem.eventId) weight += 0.8;
+        if (Math.abs(refMemberBoost - baseMemberBoost) < 0.03) weight += 0.9;
 
         const scaleSim = Math.min(rNow, 1 / Math.max(1e-4, rNow));
-        weight *= (0.5 + 0.5 * scaleSim);
+        weight *= (0.45 + 0.55 * scaleSim);
 
         refModels.push({
           item,
@@ -1137,8 +1256,13 @@
       if (!isFinished && refModels.length > 0) {
         const totalW = refModels.reduce((acc, m) => acc + m.weight, 0);
         centralFinal = refModels.reduce((acc, m) => acc + m.impliedFinal * m.weight, 0) / totalW;
-        minFinal = Math.min(...refModels.map(m => m.impliedFinal));
-        maxFinal = Math.max(...refModels.map(m => m.impliedFinal));
+
+        const variance = refModels.reduce((acc, m) => acc + m.weight * Math.pow(m.impliedFinal - centralFinal, 2), 0) / totalW;
+        const stdDev = Math.sqrt(variance);
+        const spreadMargin = Math.max(stdDev * 1.15, (centralFinal - currentScore) * 0.08);
+
+        minFinal = Math.max(currentScore, centralFinal - spreadMargin);
+        maxFinal = centralFinal + spreadMargin;
 
         for (let i = 0; i <= gridSteps; i++) {
           const p = pCur + ((1 - pCur) * i) / gridSteps;
@@ -1147,25 +1271,26 @@
             continue;
           }
           let wSum = 0;
-          const vals = [];
           for (const m of refModels) {
             const hAtP = interpScoreAtProgress(m.graph, p);
             const predAtP = currentScore + (hAtP - m.hCur) * m.multiplier;
             wSum += predAtP * m.weight;
-            vals.push(predAtP);
           }
+          const cVal = wSum / totalW;
+          const stepRatio = (p - pCur) / Math.max(1e-4, 1 - pCur);
+          const curMargin = spreadMargin * Math.pow(stepRatio, 0.85);
           forecastSeries.push({
             p,
             elapsedH: (p * dur) / 3600000,
-            central: wSum / totalW,
-            min: Math.min(...vals),
-            max: Math.max(...vals)
+            central: cVal,
+            min: Math.max(currentScore, cVal - curMargin),
+            max: cVal + curMargin
           });
         }
       } else if (!isFinished) {
-        centralFinal = naiveLinear * 1.18;
-        minFinal = naiveLinear * 1.05;
-        maxFinal = naiveLinear * 1.32;
+        centralFinal = naiveLinear * 1.18 * resourceFactor * baseMemberBoost;
+        minFinal = centralFinal * 0.90;
+        maxFinal = centralFinal * 1.12;
         forecastSeries.push({ p: pCur, elapsedH: (pCur * dur) / 3600000, central: currentScore, min: currentScore, max: currentScore });
         forecastSeries.push({ p: 1, elapsedH: dur / 3600000, central: centralFinal, min: minFinal, max: maxFinal });
       }
@@ -1188,6 +1313,7 @@
         minFinal,
         maxFinal,
         halfSpread,
+        diagTags,
         forecastSeries,
         refModels
       };
@@ -1220,7 +1346,7 @@
 
     function renderAll(pred) {
       state.latestPrediction = pred;
-      const { targetItem, currentScore, lastT, elapsedH, totalH, pCur, isFinished, recentPace, naiveLinear, centralFinal, minFinal, maxFinal, halfSpread } = pred;
+      const { targetItem, currentScore, lastT, elapsedH, totalH, pCur, isFinished, recentPace, naiveLinear, centralFinal, minFinal, maxFinal, halfSpread, diagTags } = pred;
 
       document.getElementById("eventSubtitle").textContent =
         `${targetItem.catLabel} / ${targetItem.shortLabel}（${state.rank.toLocaleString()}位ボーダー）｜開催: ${formatJST(targetItem.startTime)} 〜 ${formatJST(targetItem.endTime)}｜最新取得: ${formatJST(lastT)}`;
@@ -1233,7 +1359,7 @@
       const diffLinear = centralFinal - naiveLinear;
       document.getElementById("kpiForecastSub").textContent = isFinished
         ? "イベント終了・確定スコア"
-        : `予測誤差目安: ±${formatNumber(halfSpread)} pt（単純比例比 ${diffLinear >= 0 ? "+" : ""}${formatNumber(diffLinear)}）`;
+        : `誤差目安: ±${formatNumber(halfSpread)} pt（単純比例比 ${diffLinear >= 0 ? "+" : ""}${formatNumber(diffLinear)}）`;
 
       document.getElementById("kpiRange").textContent = `${formatNumber(minFinal)} 〜 ${formatNumber(maxFinal)}`;
       document.getElementById("kpiRangeSub").textContent = `完了済み過去 ${pred.refModels.length}件の推移曲線に基づく幅`;
@@ -1244,6 +1370,10 @@
       document.getElementById("kpiPaceSub").textContent = isFinished
         ? "残り時間なし"
         : `残り${remH.toFixed(1)}h 予測増分: +${formatNumber(remGain)} pt`;
+
+      const noteEl = document.getElementById("modelDiagnosticsNote");
+      const activeTagsStr = diagTags.length > 0 ? `【適用中の環境・属性補正: ${diagTags.join(" / ")}】` : "【適用中の環境・属性補正: 標準】";
+      noteEl.textContent = `${activeTagsStr} archive/ 内の完了済み同種イベントと比較し、JST時間帯リズム正規化・石余り/過熱反動・JP人気補正を統合して予測しています。`;
 
       renderChart(pred);
       renderMilestoneTable(pred);
@@ -1500,7 +1630,7 @@
     }
 
     // =========================================================================
-    // 4. 順位ティア別テーマ画像カード生成
+    // 4. 順位ティア別テーマ画像カード生成（~T1000:虹色, T5000:紫輝く, T10000:プラチナ, T50000:ゴールド, T100000:シルバー, それ以下:ブロンズ）
     // =========================================================================
     function getTierTheme(rank) {
       const override = document.getElementById("themeOverrideSelect")?.value || "auto";

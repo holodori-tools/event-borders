@@ -29,7 +29,7 @@
     "eventId": "marathon_event-relay-002",
     "chapterId": "marathon_event-relay-002-chapter-04",
     "t5000": "anya_5000.json",
-    "t1000": "laplus_1000.json"
+    "t1000": "anya_1000.json"
   },
   {
     "tag": "towa",
@@ -37,7 +37,7 @@
     "eventId": "marathon_event-relay-003",
     "chapterId": "marathon_event-relay-003-chapter-01",
     "t5000": "towa_5000.json",
-    "t1000": "laplus_1000.json"
+    "t1000": "towa_1000.json"
   },
   {
     "tag": "kaera",
@@ -45,7 +45,7 @@
     "eventId": "marathon_event-relay-003",
     "chapterId": "marathon_event-relay-003-chapter-02",
     "t5000": "kaera_5000.json",
-    "t1000": "laplus_1000.json"
+    "t1000": "kaera_1000.json"
   },
   {
     "tag": "botan",
@@ -53,7 +53,7 @@
     "eventId": "marathon_event-relay-003",
     "chapterId": "marathon_event-relay-003-chapter-03",
     "t5000": "botan_5000.json",
-    "t1000": "laplus_1000.json"
+    "t1000": "botan_1000.json"
   },
   {
     "tag": "bijou",

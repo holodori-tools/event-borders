@@ -4,69 +4,87 @@
     "category": "spotlight",
     "eventId": "marathon_event-relay-002",
     "chapterId": "marathon_event-relay-002-chapter-01",
-    "t5000": "aki_5000.json"
+    "t5000": "aki_5000.json",
+    "t1000": "aki_1000.json"
   },
   {
     "tag": "shiori",
     "category": "spotlight",
     "eventId": "marathon_event-relay-002",
     "chapterId": "marathon_event-relay-002-chapter-02",
-    "t5000": "shiori_5000.json"
+    "t5000": "shiori_5000.json",
+    "t1000": "shiori_1000.json"
   },
   {
     "tag": "laplus",
     "category": "spotlight",
     "eventId": "marathon_event-relay-002",
     "chapterId": "marathon_event-relay-002-chapter-03",
-    "t5000": "laplus_5000.json"
+    "t5000": "laplus_5000.json",
+    "t1000": "laplus_1000.json"
   },
   {
     "tag": "anya",
     "category": "spotlight",
     "eventId": "marathon_event-relay-002",
     "chapterId": "marathon_event-relay-002-chapter-04",
-    "t5000": "anya_5000.json"
+    "t5000": "anya_5000.json",
+    "t1000": "laplus_1000.json"
   },
   {
     "tag": "towa",
     "category": "spotlight",
     "eventId": "marathon_event-relay-003",
     "chapterId": "marathon_event-relay-003-chapter-01",
-    "t5000": "towa_5000.json"
+    "t5000": "towa_5000.json",
+    "t1000": "laplus_1000.json"
   },
   {
     "tag": "kaera",
     "category": "spotlight",
     "eventId": "marathon_event-relay-003",
     "chapterId": "marathon_event-relay-003-chapter-02",
-    "t5000": "kaera_5000.json"
+    "t5000": "kaera_5000.json",
+    "t1000": "laplus_1000.json"
   },
   {
     "tag": "botan",
     "category": "spotlight",
     "eventId": "marathon_event-relay-003",
     "chapterId": "marathon_event-relay-003-chapter-03",
-    "t5000": "botan_5000.json"
+    "t5000": "botan_5000.json",
+    "t1000": "laplus_1000.json"
   },
   {
     "tag": "bijou",
     "category": "spotlight",
     "eventId": "marathon_event-relay-003",
     "chapterId": "marathon_event-relay-003-chapter-04",
-    "t5000": "bijou_5000.json"
+    "t5000": "bijou_5000.json",
+    "t1000": "bijou_1000.json"
   },
   {
     "tag": "roboko",
     "category": "spotlight",
     "eventId": "marathon_event-relay-004",
     "chapterId": "marathon_event-relay-004-chapter-01",
-    "t5000": "roboko_5000.json"
+    "t5000": "roboko_5000.json",
+    "t1000": "roboko_1000.json"
   },
   {
     "tag": "pekora",
     "category": "spotlight",
     "eventId": "marathon_event-relay-004",
     "chapterId": "marathon_event-relay-004-chapter-02",
-    "t5000": "pekora_5000.json"
+    "t5000": "pekora_5000.json",
+    "t1000": "pekora_1000.json"
+  },
+  {
+    "tag": "irys",
+    "category": "spotlight",
+    "eventId": "marathon_event-relay-004",
+    "chapterId": "marathon_event-relay-004-chapter-03",
+    "t5000": "irys_5000.json",
+    "t1000": "irys_1000.json"
   }
 ]

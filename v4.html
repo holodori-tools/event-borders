@@ -1488,8 +1488,8 @@
 
       const diagTags = [];
 
-      // 1. 緩やかな育成環境インフレ補正（月+1.0%基準・上限+1.5%/月に抑制）
-      let monthlyGrowthRate = 0.010;
+      // 1. 緩やかな育成環境インフレ補正（月+0.5%基準・上限+1.5%/月に抑制）
+      let monthlyGrowthRate = 0.005;
       if (validRefs.length >= 3) {
         const refPts = validRefs.map(r => {
           const rDurH = (r.graph.endTime - r.graph.startTime) / 3600000;

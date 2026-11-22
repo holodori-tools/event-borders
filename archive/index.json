@@ -97,5 +97,14 @@
     "t10000": "irys_10000.json",
     "t5000": "irys_5000.json",
     "t1000": "irys_1000.json"
+  },
+  {
+    "tag": "nene",
+    "category": "spotlight",
+    "eventId": "marathon_event-relay-004",
+    "chapterId": "marathon_event-relay-004-chapter-04",
+    "t10000": "nene_10000.json",
+    "t5000": "nene_5000.json",
+    "t1000": "nene_1000.json"
   }
 ]

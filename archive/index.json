@@ -1,5 +1,37 @@
 [
   {
+    "tag": "brand_new_summer",
+    "category": "normal",
+    "eventId": "marathon_event-normal-001",
+    "t10000": "brand_new_summer_10000.json",
+    "t5000": "brand_new_summer_5000.json",
+    "t1000": "brand_new_summer_1000.json"
+  },
+  {
+    "tag": "summer_survival_days",
+    "category": "normal",
+    "eventId": "marathon_event-normal-003",
+    "t10000": "summer_survival_days_10000.json",
+    "t5000": "summer_survival_days_5000.json",
+    "t1000": "summer_survival_days_1000.json"
+  },
+  {
+    "tag": "sunshine_jamboree",
+    "category": "normal",
+    "eventId": "marathon_event-normal-007",
+    "t10000": "sunshine_jamboree_10000.json",
+    "t5000": "sunshine_jamboree_5000.json",
+    "t1000": "sunshine_jamboree_1000.json"
+  },
+  {
+    "tag": "halloween_fever",
+    "category": "normal",
+    "eventId": "marathon_event-normal-008",
+    "t10000": "halloween_fever_10000.json",
+    "t5000": "halloween_fever_5000.json",
+    "t1000": "halloween_fever_1000.json"
+  },
+  {
     "tag": "akiroze",
     "category": "spotlight",
     "eventId": "marathon_event-relay-002",
@@ -106,5 +138,14 @@
     "t10000": "nene_10000.json",
     "t5000": "nene_5000.json",
     "t1000": "nene_1000.json"
+  },
+  {
+    "tag": "reine",
+    "category": "spotlight",
+    "eventId": "marathon_event-relay-004",
+    "chapterId": "marathon_event-relay-004-chapter-05",
+    "t10000": "reine_10000.json",
+    "t5000": "reine_5000.json",
+    "t1000": "reine_1000.json"
   }
 ]
